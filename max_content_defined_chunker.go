@@ -105,10 +105,6 @@ func (c *maxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 		}
 		if len(hashRegion) == 0 {
 			if currentChunk.end-previousChunk.end == c.minSizeBytes {
-				// Current chunk has become minSizeBytes
-				// in size, meaning a new potential
-				// cutting point has appeared. Start a
-				// new chunk.
 				oldChunks = append(oldChunks, previousChunk)
 				previousChunk = currentChunk
 				continue
