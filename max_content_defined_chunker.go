@@ -95,45 +95,45 @@ func (c *maxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 		oldChunks = c.chunks[:0]
 	}
 
-GearNextChunk:
 	for {
-		// Start hashing data where the previous call left off.
-		// Stop hashing when the current chunk becomes
-		// minSizeBytes in size, as this requires us to insert a
-		// new chunk.
+		// Start hashing data where the previous call left off. Stop
+		// hashing when the current chunk becomes minSizeBytes in
+		// size, as this requires us to insert a new chunk.
 		hashRegion := d[currentChunk.end:]
 		if m := c.minSizeBytes - (currentChunk.end - previousChunk.end); len(hashRegion) > m {
 			hashRegion = hashRegion[:m]
+		}
+		if len(hashRegion) == 0 {
+			if currentChunk.end-previousChunk.end == c.minSizeBytes {
+				// Current chunk has become minSizeBytes
+				// in size, meaning a new potential
+				// cutting point has appeared. Start a
+				// new chunk.
+				oldChunks = append(oldChunks, previousChunk)
+				previousChunk = currentChunk
+				continue
+			}
+
+			// Processed maxSizeBytes. Return the first chunk.
+			c.chunks = append(oldChunks, previousChunk, currentChunk)
+			return d[:c.chunks[0].end], nil
 		}
 
 		for i, b := range hashRegion {
 			currentChunk.hash = (currentChunk.hash << 1) + gear[b]
 			if currentChunk.hash > previousChunk.hash {
-				// A more cutting point has been found
-				// that is more favorable than the
-				// previous one. Collapse the current
-				// chunk into previous ones.
+				// A cutting point has been found that is more
+				// favorable than the previous one. Collapse
+				// the current chunk into previous ones.
 				for len(oldChunks) > 0 && currentChunk.hash > oldChunks[len(oldChunks)-1].hash {
 					oldChunks = oldChunks[:len(oldChunks)-1]
 				}
-				currentChunk.end += i + 1
-				previousChunk = currentChunk
-				continue GearNextChunk
+				previousChunk = chunk{
+					hash: currentChunk.hash,
+					end:  currentChunk.end + i + 1,
+				}
 			}
 		}
-
 		currentChunk.end += len(hashRegion)
-		if currentChunk.end-previousChunk.end < c.minSizeBytes {
-			break
-		}
-
-		// Current chunk has become minSizeBytes in size,
-		// meaning a new potential cutting point has appeared.
-		// Start a new chunk.
-		oldChunks = append(oldChunks, previousChunk)
-		previousChunk = currentChunk
 	}
-
-	c.chunks = append(oldChunks, previousChunk, currentChunk)
-	return d[:c.chunks[0].end], nil
 }
