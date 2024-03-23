@@ -63,7 +63,7 @@ func (c *maxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 	if err != nil && err != io.EOF {
 		return nil, err
 	}
-	if len(d) <= 2*c.minSizeBytes {
+	if len(d) < 2*c.minSizeBytes {
 		if len(d) == 0 {
 			return nil, io.EOF
 		}
