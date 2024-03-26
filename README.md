@@ -92,3 +92,20 @@ When chunking and deduplicating the Linux kernel source tarballs, we
 observed that for that specific data set the optimal ratio between the
 minimum and maximum chunk size was somewhere close to 4x. We therefore
 recommend that this ratio is used as a starting point.
+
+### Relationship to RDC FilterMax
+
+Microsoft's [Remote Differential Compression algorithm](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-rdc)
+uses a content defined chunking algorithm named FilterMax. Just like
+MaxCDC, it attempts to insert cutting points at positions where the hash
+value of a rolling hash function is a local maximum. The main difference
+is that this is only checked within a small region what the algorithm
+names the horizon. This results in a chunk size distribution that is
+geometric, similar to traditional Rabin fingerprinting implementations.
+
+Some testing of this construct in combination with the Gear hash
+function was performed, using the same methodology as described above.
+Deduplicating yielded 398,967 unique chunks with a combined size of
+4,031,959,354 bytes. This is 4.11% worse than FastCDC8KB and 6.38% worse
+than MaxCDC. The average chunk size was 10,105 bytes, which is similar
+to what was used for the previous tests.
