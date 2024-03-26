@@ -21,7 +21,8 @@ is made when the bytes right before it are hashed. This simple design
 has some limitations. For example:
 
 - If no cutting point is found before the maximum chunk size is reached,
-  the algorithm is forced to make a cut at an undesirable offset.
+  the algorithm is forced to make a cut at an undesirable offset. It
+  will not be able to select a "close to optimal" cutting point.
 
 - When implemented trivially, the size of chunks is expected to follow a
   geometric distribution. This means that there is a relatively large
@@ -30,10 +31,11 @@ has some limitations. For example:
   smallest ones (2 KB vs 64 KB).
 
 The MaxCDC algorithm attempts to address this by performing lookaheads.
-Instead of selecting cutting points on the fly, it scans the input up to
-the maximum limit and chooses the cutting point that is most desirable.
-It considers the most desirable cutting point to be the one for which
-the Gear hash is maximal.
+Instead of selecting cutting points on the fly, it always scans the
+input up to the maximum limit and only afterwards chooses a cutting
+point that is most desirable. It considers the most desirable cutting
+point to be the one for which the Gear hash has the highest value, hence
+the name MaxCDC.
 
 ### Runtime performance
 
@@ -42,7 +44,7 @@ Implementing MaxCDC trivially (as done in
 data is hashed redundantly. It may process input up to the maximum limit
 and select a cutting point close to the minimum limit. Any data in
 between those two limits would be hashed again during the next
-iteration. To prevent this overhead, we provide an optimized
+iteration. To eliminate this overhead, we provide an optimized
 implementation (in `max_content_defined_chunker.go`) that preserves
 potential future cutting points on a stack, allowing subsequent calls to
 reuse this information. Performance of this optimized implementation is
@@ -61,7 +63,7 @@ across all 80 versions, 383,093 chunks remain that have a total size of
 3,872,754,501 bytes. Chunks thus have an average size of 10,109 bytes.
 
 We then chunked the same tarballs using MaxCDC, using a minimum size of
-2,048 bytes and a maximum size of 14,785 bytes. After deduplicating,
+4,096 bytes and a maximum size of 14,785 bytes. After deduplicating,
 this yielded 374,833 chunks having a total size of 3,790,013,152 bytes.
 The minimum and maximum chunk size were intentionally chosen so that the
 average chunk size was almost identical to that of FastCDC8KB, namely
@@ -74,6 +76,19 @@ B / 4,096 B ≈ 3.61) when compared to FastCDC8KB (64 KB / 2 KB = 32).
 
 ### Tuning recommendations
 
-During the testing above, we have observed that MaxCDC works well if the
-ratio between the minimum and maximum chunk size is approximately
-3.5-4x.
+Assume you use MaxCDC to chunk two non-identical, but similar files.
+Making the ratio between the minimum and maximum permitted chunk size
+too small leads to bad performance, because it causes the streams of
+chunks to take longer to converge after differing parts have finished
+processing.
+
+Conversely, making the ratio between the minimum and maximum permitted
+chunk size too large is also suboptimal. The reason being that large
+chunks have a lower probability of getting deduplicated against others.
+This causes the average size of chunks stored in a deduplicating data
+store to become higher than that of the chunking algorithm itself.
+
+When chunking and deduplicating the Linux kernel source tarballs, we
+observed that for that specific data set the optimal ratio between the
+minimum and maximum chunk size was somewhere close to 4x. We therefore
+recommend that this ratio is used as a starting point.
