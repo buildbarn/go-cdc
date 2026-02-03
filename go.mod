@@ -3,7 +3,6 @@ module github.com/buildbarn/go-cdc
 go 1.21.3
 
 require (
-	github.com/seehuhn/mt19937 v1.0.0
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/sync v0.6.0
 )
