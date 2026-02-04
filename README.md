@@ -109,3 +109,25 @@ Deduplicating yielded 398,967 unique chunks with a combined size of
 4,031,959,354 bytes. This is 4.11% worse than FastCDC8KB and 6.38% worse
 than MaxCDC. The average chunk size was 10,105 bytes, which is similar
 to what was used for the previous tests.
+
+## RepMaxCDC: repeated application of MaxCDC
+
+RepMaxCDC is a logical extension to MaxCDC. Namely, it behaves as if the
+MaxCDC algorithm is invoked repeatedly until chunks can no longer be
+decomposed. This reduces the ratio between the minimum and maximum chunk
+size to 2, which is optimal.
+
+Like MaxCDC, this algorithm takes a parameter that controls the amount
+of data that is read ahead. While MaxCDC uses it to control the maximum
+chunk size, in this algorithm it only denotes the quality of the
+chunking that is performed (i.e., the horizon size).
+
+While MaxCDC performs poorly if the ratio between the maximum and
+minimum chunk size becomes too large, the horizon size can be increased
+freely without reducing quality. However, there will be diminishing
+returns.
+
+It has been observed that this algorithm provides an almost identical
+rate of deduplication as MaxCDC. The advantage of this algorithm over
+MaxCDC is that for a given input it is trivial to check whether it is
+already chunked, purely looking at its size.

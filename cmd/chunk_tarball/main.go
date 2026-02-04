@@ -47,8 +47,9 @@ func main() {
 		}
 	})
 	g.Go(func() error {
-		r := cdc.NewMaxContentDefinedChunker(pr, 16*1024*1024, 2*1024, 16*1024 - 390*2)
+		// r := cdc.NewMaxContentDefinedChunker(pr, 16*1024*1024, 4*1024, 14785)
 		// r := cdc.NewFastContentDefinedChunker(pr, 16*1024*1024)
+		r := cdc.NewSimpleRepMaxContentDefinedChunker(pr, 16*1024*1024, 7485, 64*1024)
 
 		for {
 			chunk, err := r.ReadNextChunk()
@@ -67,5 +68,4 @@ func main() {
 	if err := g.Wait(); err != nil {
 		log.Fatal(err)
 	}
-
 }
