@@ -11,9 +11,9 @@ type chunk struct {
 }
 
 type maxContentDefinedChunker struct {
-	r            *bufio.Reader
-	minSizeBytes int
-	maxSizeBytes int
+	r             *bufio.Reader
+	minSizeBytes  int
+	peekSizeBytes int
 
 	chunks []chunk
 }
@@ -37,10 +37,10 @@ type maxContentDefinedChunker struct {
 // that differ between files have finished processing.
 func NewMaxContentDefinedChunker(r io.Reader, bufferSizeBytes, minSizeBytes, maxSizeBytes int) ContentDefinedChunker {
 	return &maxContentDefinedChunker{
-		r:            bufio.NewReaderSize(r, bufferSizeBytes),
-		minSizeBytes: minSizeBytes,
-		maxSizeBytes: maxSizeBytes,
-		chunks:       make([]chunk, 1, maxSizeBytes/minSizeBytes+2),
+		r:             bufio.NewReaderSize(r, bufferSizeBytes),
+		minSizeBytes:  minSizeBytes,
+		peekSizeBytes: minSizeBytes + maxSizeBytes,
+		chunks:        make([]chunk, 1, maxSizeBytes/minSizeBytes+2),
 	}
 }
 
@@ -59,7 +59,7 @@ func (c *maxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 	// data or leave at least minSizeBytes behind. This ensures that
 	// all chunks of the file are at least minSizeBytes in size,
 	// assuming the file is as well.
-	d, err := c.r.Peek(c.minSizeBytes + c.maxSizeBytes)
+	d, err := c.r.Peek(c.peekSizeBytes)
 	if err != nil && err != io.EOF {
 		return nil, err
 	}
