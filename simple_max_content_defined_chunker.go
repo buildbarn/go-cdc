@@ -61,15 +61,16 @@ func (c *simpleMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 	// Scan the entire input to see if there's a more suitable
 	// position at which we should cut.
 	bestHash := hash
-	bestChunkSizeBytes := c.minSizeBytes
+	bestCutOffsetBytes := 0
 	for i, b := range d[c.minSizeBytes:] {
 		hash = (hash << 1) + gear[b]
 		if bestHash < hash {
 			bestHash = hash
-			bestChunkSizeBytes = c.minSizeBytes + i + 1
+			bestCutOffsetBytes = i + 1
 		}
 	}
 
+	bestChunkSizeBytes := c.minSizeBytes + bestCutOffsetBytes
 	c.previousChunkSizeBytes = bestChunkSizeBytes
 	return d[:bestChunkSizeBytes], nil
 }

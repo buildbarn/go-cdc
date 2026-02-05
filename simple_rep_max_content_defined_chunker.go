@@ -64,15 +64,16 @@ func (c *simpleRepMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 	for {
 		hash := initialHash
 		bestHash := hash
-		bestChunkSizeBytes := c.minSizeBytes
+		bestCutOffsetBytes := 0
 		for i, b := range d[c.minSizeBytes:] {
 			hash = (hash << 1) + gear[b]
 			if bestHash < hash {
 				bestHash = hash
-				bestChunkSizeBytes = c.minSizeBytes + i + 1
+				bestCutOffsetBytes = i + 1
 			}
 		}
-		if bestChunkSizeBytes < 2*c.minSizeBytes {
+		if bestCutOffsetBytes < c.minSizeBytes {
+			bestChunkSizeBytes := c.minSizeBytes + bestCutOffsetBytes
 			c.previousChunkSizeBytes = bestChunkSizeBytes
 			return d[:bestChunkSizeBytes], nil
 		}
@@ -82,6 +83,6 @@ func (c *simpleRepMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 		// is too large. Repeat the search, limiting the size of
 		// the horizon. This allows a future call to
 		// ReadNextChunk() to consider this position again.
-		d = d[:bestChunkSizeBytes-c.minSizeBytes]
+		d = d[:bestCutOffsetBytes]
 	}
 }
