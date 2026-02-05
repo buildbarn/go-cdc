@@ -19,13 +19,13 @@ func TestMaxContentDefinedChunker(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		chunker1 := cdc.NewSimpleMaxContentDefinedChunker(
 			io.LimitReader(r1, 1024*1024),
-			/* peekSizeBytes = */ 64*1024,
+			/* bufferSizeBytes = */ 64*1024,
 			/* minSizeBytes = */ 2*1024,
 			/* maxSizeBytes = */ 16*1024,
 		)
 		chunker2 := cdc.NewMaxContentDefinedChunker(
 			io.LimitReader(r2, 1024*1024),
-			/* peekSizeBytes = */ 64*1024,
+			/* bufferSizeBytes = */ 64*1024,
 			/* minSizeBytes = */ 2*1024,
 			/* maxSizeBytes = */ 16*1024,
 		)
