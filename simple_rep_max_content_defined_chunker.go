@@ -78,11 +78,12 @@ func (c *simpleRepMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 			return d[:bestChunkSizeBytes], nil
 		}
 
-		// If we were to cut at the most suitable position
-		// within the horizon, we would end up with a chunk that
-		// is too large. Repeat the search, limiting the size of
-		// the horizon. This allows a future call to
-		// ReadNextChunk() to consider this position again.
+		// If we were to cut at the most suitable position within
+		// the horizon, we would end up with a chunk that is too
+		// large. Repeat the search, limiting the size of the
+		// horizon to minSizeBytes before the position that was
+		// just obtained. This allows the next calls to
+		// ReadNextChunk() to still consider this position again.
 		d = d[:bestCutOffsetBytes]
 	}
 }
