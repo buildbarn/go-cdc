@@ -74,7 +74,7 @@ func (c *repMaxContentDefinedChunker) addChunkAndDiscardExtraneous(oldChunks []c
 		}
 
 		// Perform a forward pass, removing duplicate cutting
-		// points what were introduced by the pass above.
+		// points that were introduced by the pass above.
 		potentiallyDuplicateChunks := oldChunks[overwriteIndex+2:]
 		oldChunks = oldChunks[:overwriteIndex+2]
 		for _, c := range potentiallyDuplicateChunks {
@@ -241,11 +241,11 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 			if currentChunk.hash > previousChunk.hash {
 				// A cutting point has been found that
 				// is more favorable than the previous
-				// one. This doesn't mean we can't
-				// discard the previous one just yet, as
-				// we may need to use it if it turns out
-				// an even more favorable cutting point
-				// is located nearby.
+				// one. This doesn't mean we can discard
+				// the previous one just yet, as we may
+				// need to use it if it turns out an
+				// even more favorable cutting point is
+				// located nearby.
 				oldChunks = c.addChunkAndDiscardExtraneous(oldChunks, previousChunk)
 				previousChunk = chunk{
 					hash: currentChunk.hash,
