@@ -130,23 +130,88 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 			}
 
 			// Processed the full horizon. Return the first chunk.
-			//
-			// It may be the case that the start of the list
-			// still contains extraneous cutting points. We
-			// need to work our way backwards through the
-			// list to determine how many of these
-			// extraneous cutting points we should ignore.
-			oldChunks = append(oldChunks, previousChunk)
-			ignoreIndex := len(oldChunks) - 1
-			for i := len(oldChunks); i > 1; i-- {
-				if oldChunks[ignoreIndex].hash < oldChunks[i-2].hash || oldChunks[ignoreIndex].end-oldChunks[i-2].end >= c.minSizeBytes {
-					ignoreIndex = i - 2
+			allChunks := append(oldChunks, previousChunk, currentChunk)
+			if allChunks[1].end-allChunks[0].end < c.minSizeBytes {
+				// All potential cutting points in the horizon
+				// are less than the minimum chunk size apart.
+				// Ensure that we pick a cutting point
+				// respecting the maximum chunk size, that
+				// still allows us to pick the most optimal
+				// cutting point in the horizon later on.
+				firstChunkIndex := len(allChunks) - 2
+				for i := len(allChunks) - 3; i >= 0; i-- {
+					if allChunks[firstChunkIndex].hash < allChunks[i].hash || allChunks[firstChunkIndex].end-allChunks[i].end >= c.minSizeBytes {
+						firstChunkIndex = i
+					}
+				}
+				firstChunk := allChunks[firstChunkIndex]
+
+				// There will be potential cutting points
+				// after the selected one that are no longer
+				// eligible, as those would violate the
+				// minimum chunk size. These should be removed
+				// from the list.
+				reusableChunks := allChunks[firstChunkIndex+1:]
+				for {
+					if size := reusableChunks[0].end - firstChunk.end; size > c.minSizeBytes {
+						// This cutting point and the ones after it
+						// should be kept. However, because it
+						// resides at an offset beyond the minimum
+						// chunk size, we may have glossed over
+						// potential cutting points before it.
+						// Recompute these.
+						//
+						// This should only happen rarely,
+						// especially if the horizon size is
+						// sufficiently large.
+						nextChunkStart := d[firstChunk.end:][:size-1]
+						bestHash := uint64(0)
+						for _, b := range nextChunkStart[c.minSizeBytes-64 : c.minSizeBytes] {
+							bestHash = (bestHash << 1) + gear[b]
+						}
+						recomputedRegionStart := firstChunk.end + c.minSizeBytes
+						reusableChunksCopy := append([]chunk(nil), reusableChunks...)
+						allChunks = append(
+							allChunks[:0],
+							firstChunk,
+							chunk{
+								hash: bestHash,
+								end:  recomputedRegionStart,
+							},
+						)
+						hash := bestHash
+						for i, b := range nextChunkStart[c.minSizeBytes:] {
+							hash = (hash << 1) + gear[b]
+							if bestHash < hash {
+								bestHash = hash
+								allChunks = append(allChunks, chunk{
+									hash: hash,
+									end:  recomputedRegionStart + i + 1,
+								})
+							}
+						}
+						allChunks = append(allChunks, reusableChunksCopy...)
+						break
+					} else if size == c.minSizeBytes {
+						// This cutting point and the ones after it
+						// should be kept. There is no need to
+						// recompute any cutting points.
+						allChunks = append(
+							append(allChunks[:0], firstChunk),
+							reusableChunks...,
+						)
+						break
+					}
+
+					// The cutting point should be removed.
+					reusableChunks = reusableChunks[1:]
+					if len(reusableChunks) == 0 {
+						allChunks = append(allChunks[:0], firstChunk)
+						break
+					}
 				}
 			}
-			if ignoreIndex > 0 {
-				oldChunks = append(oldChunks[:0], oldChunks[ignoreIndex:]...)
-			}
-			c.chunks = append(oldChunks, currentChunk)
+			c.chunks = allChunks
 			return d[:c.chunks[0].end], nil
 		}
 
