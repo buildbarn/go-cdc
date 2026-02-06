@@ -3,7 +3,6 @@ package cdc
 import (
 	"bufio"
 	"io"
-	"slices"
 )
 
 type repMaxContentDefinedChunker struct {
@@ -54,13 +53,35 @@ func NewRepMaxContentDefinedChunker(r io.Reader, bufferSizeBytes, minSizeBytes, 
 // is at least minSizeBytes, then we can clean up the extraneous
 // potential cutting points by selecting the best one.
 func (c *repMaxContentDefinedChunker) addChunkAndDiscardExtraneous(oldChunks []chunk, newChunk chunk) []chunk {
-	if len(oldChunks) > 0 && newChunk.end-oldChunks[len(oldChunks)-1].end >= c.minSizeBytes {
-		for i := len(oldChunks); i >= 2; i-- {
-			if oldChunks[i-1].end-oldChunks[i-2].end < c.minSizeBytes {
-				oldChunks[i-2] = oldChunks[i-1]
+	if len(oldChunks) >= 2 && newChunk.end-oldChunks[len(oldChunks)-1].end >= c.minSizeBytes {
+		// Perform a reverse pass, overwriting extraneous
+		// potential cutting points with the cutting point that
+		// has been selected.
+		overwriteIndex := len(oldChunks) - 2
+		nextChunk := &oldChunks[len(oldChunks)-1]
+		originalNextChunkEnd := nextChunk.end
+		for overwriteIndex >= 0 {
+			currentChunk := &oldChunks[overwriteIndex]
+			overwriteIndex--
+			if originalNextChunkEnd-currentChunk.end >= c.minSizeBytes {
+				break
+			}
+			originalNextChunkEnd = currentChunk.end
+			if nextChunk.end-currentChunk.end < c.minSizeBytes {
+				*currentChunk = *nextChunk
+			}
+			nextChunk = currentChunk
+		}
+
+		// Perform a forward pass, removing duplicate cutting
+		// points what were introduced by the pass above.
+		potentiallyDuplicateChunks := oldChunks[overwriteIndex+2:]
+		oldChunks = oldChunks[:overwriteIndex+2]
+		for _, c := range potentiallyDuplicateChunks {
+			if c.end > oldChunks[len(oldChunks)-1].end {
+				oldChunks = append(oldChunks, c)
 			}
 		}
-		oldChunks = slices.Compact(oldChunks)
 	}
 	return append(oldChunks, newChunk)
 }
