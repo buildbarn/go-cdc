@@ -152,7 +152,7 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 
 		for i, b := range hashRegion {
 			currentChunk.hash = (currentChunk.hash << 1) + gear[b]
-			if currentChunk.hash > previousChunk.hash && currentChunk.end-previousChunk.end < c.minSizeBytes {
+			if currentChunk.hash > previousChunk.hash {
 				// A cutting point has been found that
 				// is more favorable than the previous
 				// one. This doesn't mean we can't
@@ -160,7 +160,7 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 				// we may need to use it if it turns out
 				// an even more favorable cutting point
 				// is located nearby.
-				oldChunks = append(oldChunks, previousChunk)
+				oldChunks = c.addChunkAndDiscardExtraneous(oldChunks, previousChunk)
 				previousChunk = chunk{
 					hash: currentChunk.hash,
 					end:  currentChunk.end + i + 1,
