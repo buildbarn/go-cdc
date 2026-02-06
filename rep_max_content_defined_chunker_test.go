@@ -16,35 +16,37 @@ func TestRepMaxContentDefinedChunker(t *testing.T) {
 	r1 := rand.New(rand.NewSource(seed))
 	r2 := rand.New(rand.NewSource(seed))
 
-	for i := 0; i < 1000; i++ {
-		chunker1 := cdc.NewSimpleRepMaxContentDefinedChunker(
-			io.LimitReader(r1, 1024*1024),
-			/* bufferSizeBytes = */ 64*1024,
-			/* minSizeBytes = */ 2*1024,
-			/* horizonSizeBytes = */ 16*1024,
-		)
-		chunker2 := cdc.NewRepMaxContentDefinedChunker(
-			io.LimitReader(r2, 1024*1024),
-			/* bufferSizeBytes = */ 64*1024,
-			/* minSizeBytes = */ 2*1024,
-			/* horizonSizeBytes = */ 16*1024,
-		)
+	for horizonSizeBytes := 0; horizonSizeBytes <= 16*1024; horizonSizeBytes += 2 * 1024 {
+		for i := 0; i < 100; i++ {
+			chunker1 := cdc.NewSimpleRepMaxContentDefinedChunker(
+				io.LimitReader(r1, 1024*1024),
+				/* bufferSizeBytes = */ 64*1024,
+				/* minSizeBytes = */ 2*1024,
+				horizonSizeBytes,
+			)
+			chunker2 := cdc.NewRepMaxContentDefinedChunker(
+				io.LimitReader(r2, 1024*1024),
+				/* bufferSizeBytes = */ 64*1024,
+				/* minSizeBytes = */ 2*1024,
+				horizonSizeBytes,
+			)
 
-		for totalRead := 0; totalRead < 1024*1024; {
-			chunk1, err1 := chunker1.ReadNextChunk()
-			require.NoError(t, err1)
-			require.LessOrEqual(t, 2*1024, len(chunk1))
-			require.Greater(t, 4*1024, len(chunk1))
+			for totalRead := 0; totalRead < 1024*1024; {
+				chunk1, err1 := chunker1.ReadNextChunk()
+				require.NoError(t, err1)
+				require.LessOrEqual(t, 2*1024, len(chunk1))
+				require.Greater(t, 4*1024, len(chunk1))
 
-			chunk2, err2 := chunker2.ReadNextChunk()
-			require.NoError(t, err2)
-			require.Equal(t, chunk1, chunk2)
-			totalRead += len(chunk1)
+				chunk2, err2 := chunker2.ReadNextChunk()
+				require.NoError(t, err2)
+				require.Equal(t, chunk1, chunk2)
+				totalRead += len(chunk1)
+			}
+
+			_, err1 := chunker1.ReadNextChunk()
+			require.Equal(t, io.EOF, err1)
+			_, err2 := chunker2.ReadNextChunk()
+			require.Equal(t, io.EOF, err2)
 		}
-
-		_, err1 := chunker1.ReadNextChunk()
-		require.Equal(t, io.EOF, err1)
-		_, err2 := chunker2.ReadNextChunk()
-		require.Equal(t, io.EOF, err2)
 	}
 }
