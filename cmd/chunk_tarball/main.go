@@ -47,8 +47,8 @@ func main() {
 		}
 	})
 	g.Go(func() error {
-		// r := cdc.NewMaxContentDefinedChunker(pr, 16*1024*1024, 4*1024, 14785)
 		// r := cdc.NewFastContentDefinedChunker(pr, 16*1024*1024)
+		// r := cdc.NewMaxContentDefinedChunker(pr, 16*1024*1024, 4*1024, 14785)
 		r := cdc.NewRepMaxContentDefinedChunker(pr, 16*1024*1024, 7485, 8*7485)
 
 		for {
