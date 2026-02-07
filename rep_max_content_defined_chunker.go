@@ -1,12 +1,11 @@
 package cdc
 
 import (
-	"bufio"
 	"io"
 )
 
 type repMaxContentDefinedChunker struct {
-	r             *bufio.Reader
+	r             Peeker
 	minSizeBytes  int
 	peekSizeBytes int
 
@@ -34,9 +33,9 @@ type repMaxContentDefinedChunker struct {
 // rate of deduplication as MaxCDC. The advantage of this algorithm over
 // MaxCDC is that for a given input it is trivial to check whether it is
 // already chunked, purely looking at its size.
-func NewRepMaxContentDefinedChunker(r io.Reader, bufferSizeBytes, minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
+func NewRepMaxContentDefinedChunker(r Peeker, minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
 	return &repMaxContentDefinedChunker{
-		r:             bufio.NewReaderSize(r, bufferSizeBytes),
+		r:             r,
 		minSizeBytes:  minSizeBytes,
 		peekSizeBytes: 2*minSizeBytes + horizonSizeBytes,
 

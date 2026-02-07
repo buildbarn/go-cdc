@@ -1,7 +1,6 @@
 package cdc
 
 import (
-	"bufio"
 	"io"
 )
 
@@ -80,7 +79,7 @@ var gear = [256]uint64{
 }
 
 type fastContentDefinedChunker struct {
-	r *bufio.Reader
+	r Peeker
 
 	previousChunkSizeBytes int
 }
@@ -89,9 +88,9 @@ type fastContentDefinedChunker struct {
 // uses the FastCDC8KB algorithm as described in the paper "The Design
 // of Fast Content-Defined Chunking for Data Deduplication Based Storage
 // Systems".
-func NewFastContentDefinedChunker(r io.Reader, bufferSizeBytes int) ContentDefinedChunker {
+func NewFastContentDefinedChunker(r Peeker) ContentDefinedChunker {
 	return &fastContentDefinedChunker{
-		r: bufio.NewReaderSize(r, bufferSizeBytes),
+		r: r,
 	}
 }
 

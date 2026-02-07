@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -17,8 +18,8 @@ func main() {
 		log.Fatal("Failed to open input file: ", err)
 	}
 
-	r := cdc.NewMaxContentDefinedChunker(f, 16*1024*1024, 2*1024, 16*1024)
-	// r := cdc.NewFastContentDefinedChunker(f, 16*1024*1024)
+	r := cdc.NewMaxContentDefinedChunker(bufio.NewReaderSize(f, 16*1024*1024), 2*1024, 16*1024)
+	// r := cdc.NewFastContentDefinedChunker(bufio.NewReader(f, 16*1024*1024))
 
 	chunkCount := 0
 	for {

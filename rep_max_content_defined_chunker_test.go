@@ -1,6 +1,7 @@
 package cdc_test
 
 import (
+	"bufio"
 	"io"
 	"math/rand"
 	"testing"
@@ -19,14 +20,12 @@ func TestRepMaxContentDefinedChunker(t *testing.T) {
 	for horizonSizeBytes := 0; horizonSizeBytes <= 16*1024; horizonSizeBytes += 2 * 1024 {
 		for i := 0; i < 100; i++ {
 			chunker1 := cdc.NewSimpleRepMaxContentDefinedChunker(
-				io.LimitReader(r1, 1024*1024),
-				/* bufferSizeBytes = */ 64*1024,
+				bufio.NewReaderSize(io.LimitReader(r1, 1024*1024), 64*1024),
 				/* minSizeBytes = */ 2*1024,
 				horizonSizeBytes,
 			)
 			chunker2 := cdc.NewRepMaxContentDefinedChunker(
-				io.LimitReader(r2, 1024*1024),
-				/* bufferSizeBytes = */ 64*1024,
+				bufio.NewReaderSize(io.LimitReader(r2, 1024*1024), 64*1024),
 				/* minSizeBytes = */ 2*1024,
 				horizonSizeBytes,
 			)

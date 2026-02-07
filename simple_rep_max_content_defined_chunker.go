@@ -1,12 +1,11 @@
 package cdc
 
 import (
-	"bufio"
 	"io"
 )
 
 type simpleRepMaxContentDefinedChunker struct {
-	r             *bufio.Reader
+	r             Peeker
 	minSizeBytes  int
 	peekSizeBytes int
 
@@ -18,9 +17,9 @@ type simpleRepMaxContentDefinedChunker struct {
 // NewRepMaxContentDefinedChunker. However, this implementation is
 // simpler and less efficient. It is merely provided for testing
 // purposes.
-func NewSimpleRepMaxContentDefinedChunker(r io.Reader, bufferSizeBytes, minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
+func NewSimpleRepMaxContentDefinedChunker(r Peeker, minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
 	return &simpleRepMaxContentDefinedChunker{
-		r:             bufio.NewReaderSize(r, bufferSizeBytes),
+		r:             r,
 		minSizeBytes:  minSizeBytes,
 		peekSizeBytes: 2*minSizeBytes + horizonSizeBytes,
 	}

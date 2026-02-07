@@ -1,7 +1,6 @@
 package cdc
 
 import (
-	"bufio"
 	"io"
 )
 
@@ -11,7 +10,7 @@ type chunk struct {
 }
 
 type maxContentDefinedChunker struct {
-	r             *bufio.Reader
+	r             Peeker
 	minSizeBytes  int
 	peekSizeBytes int
 
@@ -35,9 +34,9 @@ type maxContentDefinedChunker struct {
 // smaller. Furthermore, it is expected that this distribution also
 // causes the sequence of chunks to converge more quickly after parts
 // that differ between files have finished processing.
-func NewMaxContentDefinedChunker(r io.Reader, bufferSizeBytes, minSizeBytes, maxSizeBytes int) ContentDefinedChunker {
+func NewMaxContentDefinedChunker(r Peeker, minSizeBytes, maxSizeBytes int) ContentDefinedChunker {
 	return &maxContentDefinedChunker{
-		r:             bufio.NewReaderSize(r, bufferSizeBytes),
+		r:             r,
 		minSizeBytes:  minSizeBytes,
 		peekSizeBytes: minSizeBytes + maxSizeBytes,
 		chunks:        make([]chunk, 1, maxSizeBytes/minSizeBytes+2),
