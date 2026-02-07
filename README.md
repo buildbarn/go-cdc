@@ -146,6 +146,9 @@ depending on whether the expected chunk size of 8 KB is reached. It is
 important to note that the expected chunk size is not the average, nor
 the median.
 
+You can see that FastCDC effectively tries to emulate a normal
+distribution by stitching two geometric distributions together.
+
 ### MaxCDC
 
 ![Chunk size distribution for MaxCDC](/images/cumulative-sizes-maxcdc.png)
