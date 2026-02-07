@@ -131,3 +131,37 @@ It has been observed that this algorithm provides an almost identical
 rate of deduplication as MaxCDC. The advantage of this algorithm over
 MaxCDC is that for a given input it is trivial to check whether it is
 already chunked, purely looking at its size.
+
+## Chunk size distribution
+
+Below are some graphs showing the chunk size distribution of the
+algorithms discussed above.
+
+### FastCDC
+
+![Chunk size distribution for FastCDC](/images/cumulative-sizes-fastcdc.png)
+
+FastCDC uses different thresholds for determining where to make cuts,
+depending on whether the expected chunk size of 8 KB is reached. It is
+important to note that the expected chunk size is not the average, nor
+the median.
+
+### MaxCDC
+
+![Chunk size distribution for MaxCDC](/images/cumulative-sizes-maxcdc.png)
+
+With MaxCDC, the size distribution of chunks before deduplication is
+uniform. As smaller objects have a higher probability of getting
+deduplicated, you see that after deduplication larger objects occur
+somewhat more frequently.
+
+### RepMaxCDC
+
+![Chunk size distribution for RepMaxCDC](/images/cumulative-sizes-repmaxcdc.png)
+
+With RepMaxCDC, the size distribution of chunks is clearly not linear.
+Namely, the algorithm prefers creating chunks closer to the minimum
+chunk size. This can be explained by the fact that any chunks created by
+MaxCDC that are only slightly larger than twice the minimum chunk size,
+will continue to be broken up further into two small chunks by
+RepMaxCDC.
