@@ -168,3 +168,17 @@ chunk size. This can be explained by the fact that any chunks created by
 MaxCDC that are only slightly larger than twice the minimum chunk size,
 will continue to be broken up further into two small chunks by
 RepMaxCDC.
+
+This distribution doesn't have a commonly accepted name. A simple
+function that generates random numbers along the same distribution is as
+follows:
+
+```go
+func generateRandomRepMaxCDCChunkSize(minimum int64) int64 {
+	additional := rand.Int63()
+	for additional >= minimum {
+		additional = rand.Int63n(additional - minimum + 1)
+	}
+	return minimum + additional
+}
+```
