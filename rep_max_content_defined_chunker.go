@@ -97,6 +97,20 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 		return nil, err
 	}
 
+	// If the previous iteration yielded multiple chunks, we can
+	// return them without peeking the full horizon. Doing so allows
+	// us to discard data as aggressively as possible. This reduces
+	// the amount of data that needs to be retained (copied) when
+	// the read buffer is refilled.
+	if len(c.chunks) > 2 && c.chunks[2].end >= 2*c.minSizeBytes {
+		d, err := c.r.Peek(c.chunks[1].end)
+		if err != nil {
+			return nil, err
+		}
+		c.chunks = append(c.chunks[:0], c.chunks[1:]...)
+		return d, nil
+	}
+
 	// Gain access to the data corresponding to the next chunk(s).
 	// If we're reaching the end of the input, either consume all
 	// data or leave at least minSizeBytes behind. This ensures that
