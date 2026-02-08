@@ -2,6 +2,7 @@ package cdc
 
 import (
 	"io"
+	"slices"
 )
 
 type repMaxContentDefinedChunker struct {
@@ -164,16 +165,16 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 						firstChunkIndex = i
 					}
 				}
-				firstChunk := allChunks[firstChunkIndex]
+				allChunks[0] = allChunks[firstChunkIndex]
 
 				// There will be potential cutting points
 				// after the selected one that are no longer
 				// eligible, as those would violate the
 				// minimum chunk size. These should be removed
 				// from the list.
-				reusableChunks := allChunks[firstChunkIndex+1:]
+				reusableChunkIndex := firstChunkIndex + 1
 				for {
-					if size := reusableChunks[0].end - firstChunk.end; size > c.minSizeBytes {
+					if size := allChunks[reusableChunkIndex].end - allChunks[0].end; size > c.minSizeBytes {
 						// This cutting point and the ones after it
 						// should be kept. However, because it
 						// resides at an offset beyond the minimum
@@ -184,49 +185,63 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 						// This should only happen rarely,
 						// especially if the horizon size is
 						// sufficiently large.
-						nextChunkStart := d[firstChunk.end:][:size-1]
+						nextChunkStart := d[allChunks[0].end:][:size-1]
 						bestHash := uint64(0)
 						for _, b := range nextChunkStart[c.minSizeBytes-64 : c.minSizeBytes] {
 							bestHash = (bestHash << 1) + gear[b]
 						}
-						recomputedRegionStart := firstChunk.end + c.minSizeBytes
-						reusableChunksCopy := append([]chunk(nil), reusableChunks...)
-						allChunks = append(
-							allChunks[:0],
-							firstChunk,
-							chunk{
-								hash: bestHash,
-								end:  recomputedRegionStart,
-							},
-						)
+						recomputedRegionStart := allChunks[0].end + c.minSizeBytes
+						allChunks[1] = chunk{
+							hash: bestHash,
+							end:  recomputedRegionStart,
+						}
 						hash := bestHash
+						recomputedChunkIndex := 2
+						originalChunksCount := len(allChunks)
 						for i, b := range nextChunkStart[c.minSizeBytes:] {
 							hash = (hash << 1) + gear[b]
 							if bestHash < hash {
 								bestHash = hash
-								allChunks = append(allChunks, chunk{
+								recomputedChunk := chunk{
 									hash: hash,
 									end:  recomputedRegionStart + i + 1,
-								})
+								}
+								if recomputedChunkIndex < reusableChunkIndex {
+									allChunks[recomputedChunkIndex] = recomputedChunk
+									recomputedChunkIndex++
+								} else {
+									allChunks = append(allChunks, recomputedChunk)
+								}
 							}
 						}
-						allChunks = append(allChunks, reusableChunksCopy...)
+						if recomputedChunkIndex < reusableChunkIndex {
+							// Recomputing yielded fewer cutting
+							// points than we had previously. Make
+							// the cutting points contiguous again.
+							allChunks = append(allChunks[:recomputedChunkIndex], allChunks[reusableChunkIndex:]...)
+						} else if len(allChunks) > originalChunksCount {
+							// Recomputing yielded more cutting
+							// points than we had previously. The
+							// excess cutting points were stored at
+							// the end. Rotate them into place, so
+							// that the list remains sorted.
+							slices.Reverse(allChunks[reusableChunkIndex:originalChunksCount])
+							slices.Reverse(allChunks[originalChunksCount:])
+							slices.Reverse(allChunks[reusableChunkIndex:])
+						}
 						break
 					} else if size == c.minSizeBytes {
 						// This cutting point and the ones after it
 						// should be kept. There is no need to
 						// recompute any cutting points.
-						allChunks = append(
-							append(allChunks[:0], firstChunk),
-							reusableChunks...,
-						)
+						allChunks = append(allChunks[:1], allChunks[reusableChunkIndex:]...)
 						break
 					}
 
 					// The cutting point should be removed.
-					reusableChunks = reusableChunks[1:]
-					if len(reusableChunks) == 0 {
-						allChunks = append(allChunks[:0], firstChunk)
+					reusableChunkIndex++
+					if reusableChunkIndex == len(allChunks) {
+						allChunks = allChunks[:1]
 						break
 					}
 				}
