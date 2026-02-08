@@ -10,7 +10,19 @@ type repMaxContentDefinedChunker struct {
 	minSizeBytes  int
 	peekSizeBytes int
 
-	chunks []chunk
+	// List of chunks for which no future data can influence their
+	// length. The first element corresponds to the amount of data
+	// belonging to the chunk that was returned by the previous call
+	// to ReadNextChunk() that hasn't been discarded yet.
+	completeChunks []int
+
+	// List of cutting points that will determine the length of
+	// future chunks. The hashes of the cutting points in this list
+	// will be strictly monotonically increasing. Cutting points are
+	// addressed relative to the first eligible position at which
+	// they may be placed (i.e., the end of the last complete chunk,
+	// plus the minimum chunk size).
+	incompleteChunks []chunk
 }
 
 // NewRepMaxContentDefinedChunker returns a content defined chunker that
@@ -40,58 +52,15 @@ func NewRepMaxContentDefinedChunker(r Peeker, minSizeBytes, horizonSizeBytes int
 		minSizeBytes:  minSizeBytes,
 		peekSizeBytes: 2*minSizeBytes + horizonSizeBytes,
 
-		chunks: make([]chunk, 1),
+		completeChunks: make([]int, 1, horizonSizeBytes/minSizeBytes+2),
 	}
-}
-
-// addChunkAndDiscardExtraneous appends a newly observed cutting point
-// to the list of potential cutting points.
-//
-// The end of the list may still contain extraneous potential cutting
-// points that are situated close to each other. If the distance between
-// the last potential cutting point and the newly observed cutting point
-// is at least minSizeBytes, then we can clean up the extraneous
-// potential cutting points by selecting the best one.
-func (c *repMaxContentDefinedChunker) addChunkAndDiscardExtraneous(oldChunks []chunk, newChunk chunk) []chunk {
-	if len(oldChunks) >= 2 && newChunk.end-oldChunks[len(oldChunks)-1].end >= c.minSizeBytes {
-		// Perform a reverse pass, overwriting extraneous
-		// potential cutting points with the cutting point that
-		// has been selected. There is no need to preserve the
-		// hashes associated with these cutting points.
-		overwriteIndex := len(oldChunks) - 2
-		originalNextChunkEnd := oldChunks[len(oldChunks)-1].end
-		updatedNextChunkEnd := originalNextChunkEnd
-		for overwriteIndex >= 0 {
-			currentChunkEnd := &oldChunks[overwriteIndex].end
-			overwriteIndex--
-			if originalNextChunkEnd-*currentChunkEnd >= c.minSizeBytes {
-				break
-			}
-			originalNextChunkEnd = *currentChunkEnd
-			if updatedNextChunkEnd-*currentChunkEnd < c.minSizeBytes {
-				*currentChunkEnd = updatedNextChunkEnd
-			}
-			updatedNextChunkEnd = *currentChunkEnd
-		}
-
-		// Perform a forward pass, removing duplicate cutting
-		// points that were introduced by the pass above.
-		potentiallyDuplicateChunks := oldChunks[overwriteIndex+2:]
-		oldChunks = oldChunks[:overwriteIndex+2]
-		for _, c := range potentiallyDuplicateChunks {
-			if c.end > oldChunks[len(oldChunks)-1].end {
-				oldChunks = append(oldChunks, c)
-			}
-		}
-	}
-	return append(oldChunks, newChunk)
 }
 
 func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 	// Discard data that was handed out by the previous call.
-	discardedSizeBytes, err := c.r.Discard(c.chunks[0].end)
-	for i := range c.chunks {
-		c.chunks[i].end -= discardedSizeBytes
+	discardedSizeBytes, err := c.r.Discard(c.completeChunks[0])
+	for i := range c.completeChunks {
+		c.completeChunks[i] -= discardedSizeBytes
 	}
 	if err != nil {
 		return nil, err
@@ -102,12 +71,12 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 	// us to discard data as aggressively as possible. This reduces
 	// the amount of data that needs to be retained (copied) when
 	// the read buffer is refilled.
-	if len(c.chunks) > 2 && c.chunks[2].end >= 2*c.minSizeBytes {
-		d, err := c.r.Peek(c.chunks[1].end)
+	if len(c.completeChunks) > 1 {
+		d, err := c.r.Peek(c.completeChunks[1])
 		if err != nil {
 			return nil, err
 		}
-		c.chunks = append(c.chunks[:0], c.chunks[1:]...)
+		c.completeChunks = append(c.completeChunks[:0], c.completeChunks[1:]...)
 		return d, nil
 	}
 
@@ -124,165 +93,185 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 		if len(d) == 0 {
 			return nil, io.EOF
 		}
-		c.chunks = append(c.chunks[:0], chunk{end: len(d)})
+		c.completeChunks = append(c.completeChunks[:0], len(d))
+		c.incompleteChunks = c.incompleteChunks[:0]
 		return d, nil
 	}
 	d = d[:len(d)-c.minSizeBytes]
 
-	// Extract the two final chunks from the stack. The last chunk
+	// Extract the final incomplete chunk from the stack, as it
 	// denotes where the previous call stopped hashing the input.
-	// The second from last chunk is used to derive the size of the
-	// last chunk and to determine whether a new potential cutting
-	// point is found.
-	var previousChunk, currentChunk chunk
 	var oldChunks []chunk
-	if len(c.chunks) > 2 {
-		previousChunk, currentChunk = c.chunks[len(c.chunks)-2], c.chunks[len(c.chunks)-1]
-		oldChunks = append(c.chunks[:0], c.chunks[1:len(c.chunks)-2]...)
+	var currentChunk chunk
+	if len(c.incompleteChunks) >= 2 {
+		currentChunk = c.incompleteChunks[len(c.incompleteChunks)-1]
+		oldChunks = c.incompleteChunks[:len(c.incompleteChunks)-1]
 	} else {
 		// This is the very first chunk. We know that the first
 		// minSizeBytes positions can't contain a cut. Skip them.
 		for _, b := range d[c.minSizeBytes-64 : c.minSizeBytes] {
-			previousChunk.hash = (previousChunk.hash << 1) + gear[b]
+			currentChunk.hash = (currentChunk.hash << 1) + gear[b]
 		}
-		previousChunk.end = c.minSizeBytes
-		currentChunk = previousChunk
-		oldChunks = c.chunks[:0]
+		oldChunks = append(oldChunks[:0], currentChunk)
 	}
 
 	for {
-		// Start hashing data where the previous call left off. Stop
-		// hashing when the current chunk becomes minSizeBytes in
-		// size, as this requires us to insert a new chunk.
-		hashRegion := d[currentChunk.end:]
-		if m := c.minSizeBytes - (currentChunk.end - previousChunk.end); len(hashRegion) > m {
-			hashRegion = hashRegion[:m]
-		}
-		if len(hashRegion) == 0 {
-			if currentChunk.end-previousChunk.end == c.minSizeBytes {
-				oldChunks = c.addChunkAndDiscardExtraneous(oldChunks, previousChunk)
-				previousChunk = currentChunk
-				continue
-			}
-
-			// Processed the full horizon. Return the first chunk.
-			allChunks := append(oldChunks, previousChunk, currentChunk)
-			if allChunks[1].end-allChunks[0].end < c.minSizeBytes {
-				// All potential cutting points in the horizon
-				// are less than the minimum chunk size apart.
-				// Ensure that we pick a cutting point
-				// respecting the maximum chunk size, that
-				// still allows us to pick the most optimal
-				// cutting point in the horizon later on.
-				firstChunkIndex := len(allChunks) - 2
-				for i := len(allChunks) - 3; i >= 0; i-- {
-					if allChunks[firstChunkIndex].hash < allChunks[i].hash || allChunks[firstChunkIndex].end-allChunks[i].end >= c.minSizeBytes {
-						firstChunkIndex = i
-					}
-				}
-				firstChunkEnd := allChunks[firstChunkIndex].end
-				allChunks[0].end = firstChunkEnd
-
-				// There will be potential cutting points
-				// after the selected one that are no longer
-				// eligible, as those would violate the
-				// minimum chunk size. These should be removed
-				// from the list.
-				reusableChunkIndex := firstChunkIndex + 1
-				for {
-					if size := allChunks[reusableChunkIndex].end - firstChunkEnd; size > c.minSizeBytes {
-						// This cutting point and the ones after it
-						// should be kept. However, because it
-						// resides at an offset beyond the minimum
-						// chunk size, we may have glossed over
-						// potential cutting points before it.
-						// Recompute these.
-						//
-						// This should only happen rarely,
-						// especially if the horizon size is
-						// sufficiently large.
-						nextChunkStart := d[firstChunkEnd:][:size-1]
-						bestHash := uint64(0)
-						for _, b := range nextChunkStart[c.minSizeBytes-64 : c.minSizeBytes] {
-							bestHash = (bestHash << 1) + gear[b]
-						}
-						recomputedRegionStart := firstChunkEnd + c.minSizeBytes
-						allChunks[1] = chunk{
-							hash: bestHash,
-							end:  recomputedRegionStart,
-						}
-						hash := bestHash
-						recomputedChunkIndex := 2
-						originalChunksCount := len(allChunks)
-						for i, b := range nextChunkStart[c.minSizeBytes:] {
-							hash = (hash << 1) + gear[b]
-							if bestHash < hash {
-								bestHash = hash
-								recomputedChunk := chunk{
-									hash: hash,
-									end:  recomputedRegionStart + i + 1,
-								}
-								if recomputedChunkIndex < reusableChunkIndex {
-									allChunks[recomputedChunkIndex] = recomputedChunk
-									recomputedChunkIndex++
-								} else {
-									allChunks = append(allChunks, recomputedChunk)
-								}
-							}
-						}
-						if recomputedChunkIndex < reusableChunkIndex {
-							// Recomputing yielded fewer cutting
-							// points than we had previously. Make
-							// the cutting points contiguous again.
-							allChunks = append(allChunks[:recomputedChunkIndex], allChunks[reusableChunkIndex:]...)
-						} else if len(allChunks) > originalChunksCount {
-							// Recomputing yielded more cutting
-							// points than we had previously. The
-							// excess cutting points were stored at
-							// the end. Rotate them into place, so
-							// that the list remains sorted.
-							slices.Reverse(allChunks[reusableChunkIndex:originalChunksCount])
-							slices.Reverse(allChunks[originalChunksCount:])
-							slices.Reverse(allChunks[reusableChunkIndex:])
-						}
-						break
-					} else if size == c.minSizeBytes {
-						// This cutting point and the ones after it
-						// should be kept. There is no need to
-						// recompute any cutting points.
-						allChunks = append(allChunks[:1], allChunks[reusableChunkIndex:]...)
-						break
-					}
-
-					// The cutting point should be removed.
-					reusableChunkIndex++
-					if reusableChunkIndex == len(allChunks) {
-						allChunks = allChunks[:1]
-						break
-					}
-				}
-			}
-			c.chunks = allChunks
-			return d[:c.chunks[0].end], nil
+		// Start hashing data where the previous call left off.
+		// Stop hashing before the distance between two
+		// consecutive potential cutting points becomes
+		// minSizeBytes in size, as this allows us to complete a
+		// chunk.
+		hashRegion := d[c.completeChunks[len(c.completeChunks)-1]+c.minSizeBytes+currentChunk.end:]
+		originalOldChunksCount := -1
+		var completingByte byte
+		if bytesBeforeMinChunkSize := oldChunks[len(oldChunks)-1].end + c.minSizeBytes - 1 - currentChunk.end; len(hashRegion) > bytesBeforeMinChunkSize {
+			completingByte = hashRegion[bytesBeforeMinChunkSize]
+			hashRegion = hashRegion[:bytesBeforeMinChunkSize]
+			originalOldChunksCount = len(oldChunks)
+		} else if len(hashRegion) == 0 {
+			break
 		}
 
+		// Preserve all offsets at which the hash increases.
+		bestHash := oldChunks[len(oldChunks)-1].hash
 		for i, b := range hashRegion {
 			currentChunk.hash = (currentChunk.hash << 1) + gear[b]
-			if currentChunk.hash > previousChunk.hash {
-				// A cutting point has been found that
-				// is more favorable than the previous
-				// one. This doesn't mean we can discard
-				// the previous one just yet, as we may
-				// need to use it if it turns out an
-				// even more favorable cutting point is
-				// located nearby.
-				oldChunks = c.addChunkAndDiscardExtraneous(oldChunks, previousChunk)
-				previousChunk = chunk{
+			if bestHash < currentChunk.hash {
+				bestHash = currentChunk.hash
+				oldChunks = append(oldChunks, chunk{
 					hash: currentChunk.hash,
 					end:  currentChunk.end + i + 1,
-				}
+				})
 			}
 		}
-		currentChunk.end += len(hashRegion)
+
+		if len(oldChunks) == originalOldChunksCount {
+			// The loop above did not yield any new cutting
+			// points, and the next byte is minSizeBytes
+			// away from the last cutting point. This means
+			// we can complete all chunks up to this point.
+			previousCompleteChunksCount := len(c.completeChunks)
+			firstNewCompleteChunkStart := c.completeChunks[len(c.completeChunks)-1] + c.minSizeBytes
+			nextChunkEnd := oldChunks[len(oldChunks)-1].end
+			c.completeChunks = append(c.completeChunks, firstNewCompleteChunkStart+nextChunkEnd)
+			for i := len(oldChunks) - 2; i >= 0; i-- {
+				currentChunkEnd := oldChunks[i].end
+				if nextChunkEnd-currentChunkEnd >= c.minSizeBytes {
+					c.completeChunks = append(c.completeChunks, firstNewCompleteChunkStart+currentChunkEnd)
+					nextChunkEnd = currentChunkEnd
+				}
+			}
+			slices.Reverse(c.completeChunks[previousCompleteChunksCount:])
+
+			currentChunk = chunk{
+				hash: (currentChunk.hash << 1) + gear[completingByte],
+			}
+			oldChunks = append(oldChunks[:0], currentChunk)
+		} else {
+			currentChunk.end += len(hashRegion)
+		}
 	}
+
+	// Processed the full horizon. Return the first chunk.
+	incompleteChunks := append(oldChunks, currentChunk)
+	if len(c.completeChunks) == 1 {
+		// The process above did not yield any complete chunks,
+		// either because we reached the end of the file or the
+		// horizon size wasn't large enough.
+		//
+		// Ensure that we pick a cutting point respecting the
+		// maximum chunk size, that still allows us to pick the
+		// most optimal cutting point in the horizon later on.
+		firstChunkIndex := len(incompleteChunks) - 2
+		for i := len(incompleteChunks) - 3; i >= 0; i-- {
+			if incompleteChunks[firstChunkIndex].hash < incompleteChunks[i].hash || incompleteChunks[firstChunkIndex].end-incompleteChunks[i].end >= c.minSizeBytes {
+				firstChunkIndex = i
+			}
+		}
+		firstChunkEnd := c.minSizeBytes + incompleteChunks[firstChunkIndex].end
+		firstChunkCompleteOffset := c.completeChunks[len(c.completeChunks)-1] + firstChunkEnd
+		c.completeChunks = append(c.completeChunks, firstChunkCompleteOffset)
+
+		// There will be potential cutting points after the
+		// selected one that are no longer eligible, as those
+		// would violate the minimum chunk size. These should be
+		// removed from the list.
+		reusableChunkIndex := firstChunkIndex + 1
+		for {
+			if offsetInSecondChunk := incompleteChunks[reusableChunkIndex].end - firstChunkEnd; offsetInSecondChunk >= 0 {
+				// This cutting point and the ones after
+				// it should be kept.
+				for i := reusableChunkIndex; i < len(incompleteChunks); i++ {
+					incompleteChunks[i].end -= firstChunkEnd
+				}
+
+				if offsetInSecondChunk == 0 {
+					// There is no need to recompute any
+					// cutting points.
+					incompleteChunks = append(incompleteChunks[:0], incompleteChunks[reusableChunkIndex:]...)
+				} else {
+					// Because the first cutting point to
+					// keep resides at an offset beyond
+					// the minimum chunk size, we may have
+					// glossed over potential cutting
+					// points before it. Recompute these.
+					//
+					// This should only happen rarely,
+					// especially if the horizon size is
+					// sufficiently large.
+					nextChunkStart := d[firstChunkCompleteOffset:][:c.minSizeBytes+offsetInSecondChunk-1]
+					hash := uint64(0)
+					for _, b := range nextChunkStart[c.minSizeBytes-64 : c.minSizeBytes] {
+						hash = (hash << 1) + gear[b]
+					}
+					incompleteChunks[0] = chunk{hash: hash}
+					bestHash := hash
+					recomputedChunkIndex := 1
+					originalChunksCount := len(incompleteChunks)
+					for i, b := range nextChunkStart[c.minSizeBytes:] {
+						hash = (hash << 1) + gear[b]
+						if bestHash < hash {
+							bestHash = hash
+							recomputedChunk := chunk{
+								hash: hash,
+								end:  i + 1,
+							}
+							if recomputedChunkIndex < reusableChunkIndex {
+								incompleteChunks[recomputedChunkIndex] = recomputedChunk
+								recomputedChunkIndex++
+							} else {
+								incompleteChunks = append(incompleteChunks, recomputedChunk)
+							}
+						}
+					}
+					if recomputedChunkIndex < reusableChunkIndex {
+						// Recomputing yielded fewer cutting points
+						// than we had previously. Make the cutting
+						// points contiguous again.
+						incompleteChunks = append(incompleteChunks[:recomputedChunkIndex], incompleteChunks[reusableChunkIndex:]...)
+					} else if len(incompleteChunks) > originalChunksCount {
+						// Recomputing yielded more cutting points
+						// than we had previously. The excess
+						// cutting points were stored at the end.
+						// Rotate them into place, so that the list
+						// remains sorted.
+						slices.Reverse(incompleteChunks[reusableChunkIndex:originalChunksCount])
+						slices.Reverse(incompleteChunks[originalChunksCount:])
+						slices.Reverse(incompleteChunks[reusableChunkIndex:])
+					}
+				}
+				break
+			}
+
+			// The cutting point should be removed.
+			reusableChunkIndex++
+			if reusableChunkIndex == len(incompleteChunks) {
+				incompleteChunks = incompleteChunks[:1]
+				break
+			}
+		}
+	}
+	c.completeChunks = append(c.completeChunks[:0], c.completeChunks[1:]...)
+	c.incompleteChunks = incompleteChunks
+	return d[:c.completeChunks[0]], nil
 }
