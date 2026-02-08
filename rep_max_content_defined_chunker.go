@@ -56,21 +56,22 @@ func (c *repMaxContentDefinedChunker) addChunkAndDiscardExtraneous(oldChunks []c
 	if len(oldChunks) >= 2 && newChunk.end-oldChunks[len(oldChunks)-1].end >= c.minSizeBytes {
 		// Perform a reverse pass, overwriting extraneous
 		// potential cutting points with the cutting point that
-		// has been selected.
+		// has been selected. There is no need to preserve the
+		// hashes associated with these cutting points.
 		overwriteIndex := len(oldChunks) - 2
-		nextChunk := &oldChunks[len(oldChunks)-1]
-		originalNextChunkEnd := nextChunk.end
+		originalNextChunkEnd := oldChunks[len(oldChunks)-1].end
+		updatedNextChunkEnd := originalNextChunkEnd
 		for overwriteIndex >= 0 {
-			currentChunk := &oldChunks[overwriteIndex]
+			currentChunkEnd := &oldChunks[overwriteIndex].end
 			overwriteIndex--
-			if originalNextChunkEnd-currentChunk.end >= c.minSizeBytes {
+			if originalNextChunkEnd-*currentChunkEnd >= c.minSizeBytes {
 				break
 			}
-			originalNextChunkEnd = currentChunk.end
-			if nextChunk.end-currentChunk.end < c.minSizeBytes {
-				*currentChunk = *nextChunk
+			originalNextChunkEnd = *currentChunkEnd
+			if updatedNextChunkEnd-*currentChunkEnd < c.minSizeBytes {
+				*currentChunkEnd = updatedNextChunkEnd
 			}
-			nextChunk = currentChunk
+			updatedNextChunkEnd = *currentChunkEnd
 		}
 
 		// Perform a forward pass, removing duplicate cutting
@@ -165,7 +166,8 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 						firstChunkIndex = i
 					}
 				}
-				allChunks[0] = allChunks[firstChunkIndex]
+				firstChunkEnd := allChunks[firstChunkIndex].end
+				allChunks[0].end = firstChunkEnd
 
 				// There will be potential cutting points
 				// after the selected one that are no longer
@@ -174,7 +176,7 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 				// from the list.
 				reusableChunkIndex := firstChunkIndex + 1
 				for {
-					if size := allChunks[reusableChunkIndex].end - allChunks[0].end; size > c.minSizeBytes {
+					if size := allChunks[reusableChunkIndex].end - firstChunkEnd; size > c.minSizeBytes {
 						// This cutting point and the ones after it
 						// should be kept. However, because it
 						// resides at an offset beyond the minimum
@@ -185,12 +187,12 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 						// This should only happen rarely,
 						// especially if the horizon size is
 						// sufficiently large.
-						nextChunkStart := d[allChunks[0].end:][:size-1]
+						nextChunkStart := d[firstChunkEnd:][:size-1]
 						bestHash := uint64(0)
 						for _, b := range nextChunkStart[c.minSizeBytes-64 : c.minSizeBytes] {
 							bestHash = (bestHash << 1) + gear[b]
 						}
-						recomputedRegionStart := allChunks[0].end + c.minSizeBytes
+						recomputedRegionStart := firstChunkEnd + c.minSizeBytes
 						allChunks[1] = chunk{
 							hash: bestHash,
 							end:  recomputedRegionStart,
