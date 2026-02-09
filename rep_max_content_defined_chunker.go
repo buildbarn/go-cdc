@@ -53,6 +53,13 @@ func NewRepMaxContentDefinedChunker(r Peeker, minSizeBytes, horizonSizeBytes int
 		peekSizeBytes: 2*minSizeBytes + horizonSizeBytes,
 
 		completeChunks: make([]int, 1, horizonSizeBytes/minSizeBytes+2),
+		// Even though this list can grow to become proportional
+		// to the size of the horizon, this is highly unlikely.
+		// As we progress, it becomes increasingly harder to
+		// find even more preferable cutting points within the
+		// minimum chunk size. Allocating space for 32 cutting
+		// points covers virtually all inputs.
+		incompleteChunks: make([]chunk, 0, 32),
 	}
 }
 
