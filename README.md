@@ -191,3 +191,8 @@ func generateRandomRepMaxCDCChunkSize(minimum int64) int64 {
 	return minimum + additional
 }
 ```
+
+The average chunk size before deduplicating has been observed to be
+roughly 67% the maximum chunk size. Could there be any relationship
+between this and the average utilization of nodes in a B-tree, which is
+$\ln(2) \approx 0.69$?
