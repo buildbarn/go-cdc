@@ -120,17 +120,26 @@ size to 2, which is optimal.
 Like MaxCDC, this algorithm takes a parameter that controls the amount
 of data that is read ahead. While MaxCDC uses it to control the maximum
 chunk size, in this algorithm it only denotes the quality of the
-chunking that is performed (i.e., the horizon size).
+chunking that is performed (i.e., the horizon size). MaxCDC performs
+poorly if the ratio between the maximum and minimum chunk size becomes
+too large. RepMaxCDC's horizon size can be increased freely without
+reducing quality, though at some point there will be diminishing
+returns (>8 times the minimum chunk size).
 
-While MaxCDC performs poorly if the ratio between the maximum and
-minimum chunk size becomes too large, the horizon size can be increased
-freely without reducing quality. However, there will be diminishing
-returns.
+It has been observed that this algorithm provides a rate of
+deduplication that is indistinguishable from MaxCDC, but only under the
+condition that MaxCDC's chunk size ratio is chosen optimally. An
+advantage of this algorithm over MaxCDC is therefore that less tuning is
+required.
 
-It has been observed that this algorithm provides an almost identical
-rate of deduplication as MaxCDC. The advantage of this algorithm over
-MaxCDC is that for a given input it is trivial to check whether it is
-already chunked, purely looking at its size.
+Furthermore, for a given input it is also trivial to check whether it is
+already chunked, purely looking at its size. This is a property that
+both FastCDC and MaxCDC lack. This makes it practical to integrate
+RepMaxCDC into existing Content Addressable Storage systems that were
+originally not designed with chunking in mind. Existing storage APIs for
+uploading and downloading objects can unambiguously determine whether
+requests pertain to an individual chunk, or a file consisting of
+multiple chunks.
 
 ## Chunk size distribution
 
