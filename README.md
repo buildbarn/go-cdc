@@ -196,3 +196,25 @@ The average chunk size before deduplicating has been observed to be
 roughly 67% the maximum chunk size. Could there be any relationship
 between this and the average utilization of nodes in a B-tree, which is
 $\ln(2) \approx 0.69$?
+
+## Future work
+
+The MaxCDC and RepMaxCDC algorithms have at this point been stablized,
+and their behavior will no longer be altered. However, this doesn't mean
+we can't add improved algorithms to this repository later on. Here are
+some topics we should try to explore:
+
+- The MaxCDC and RepMaxCDC algorithms hash data using `h=(h<<1)|gear[b]`.
+  This was done to be able to make comparisons with FastCDC fair.
+  However, the Linux kernel tarball tests show that
+  `h=(h>>1)|(gear[b]>>1)` yields better results, as it better tolerates
+  changes close to chunk boundaries. Should future versions of the
+  algorithm use that function instead?
+
+- Is it possible to make SIMD aware implementations of the MaxCDC and
+  RepMaxCDC algorithms? If not, how can the algorithms be modified to
+  accommodate this?
+
+- There exist CDC algorithms that don't depend on hashing at all, such
+  as Asymmetric Extremum (AE). Could the scheme introduced by MaxCDC and
+  RepMaxCDC be adjusted to work with such algorithms as well?
