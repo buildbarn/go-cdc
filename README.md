@@ -39,16 +39,15 @@ the name MaxCDC.
 
 ### Runtime performance
 
-Implementing MaxCDC trivially (as done in
-`simple_max_content_defined_chunker.go`) has the disadvantage that input
-data is hashed redundantly. It may process input up to the maximum limit
-and select a cutting point close to the minimum limit. Any data in
-between those two limits would be hashed again during the next
-iteration. To eliminate this overhead, we provide an optimized
-implementation (in `max_content_defined_chunker.go`) that preserves
-potential future cutting points on a stack, allowing subsequent calls to
-reuse this information. Performance of this optimized implementation is
-nearly identical to plain FastCDC.
+[Implementing MaxCDC trivially](/simple_max_content_defined_chunker.go)
+has the disadvantage that input data is hashed redundantly. It may
+process input up to the maximum limit and select a cutting point close
+to the minimum limit. Any data in between those two limits would be
+hashed again during the next iteration. To eliminate this overhead, we
+provide [an optimized implementation](/max_content_defined_chunker.go)
+that preserves potential future cutting points on a stack, allowing
+subsequent calls to reuse this information. Performance of this
+optimized implementation is nearly identical to plain FastCDC.
 
 ### Deduplication performance
 
@@ -140,6 +139,19 @@ originally not designed with chunking in mind. Existing storage APIs for
 uploading and downloading objects can unambiguously determine whether
 requests pertain to an individual chunk, or a file consisting of
 multiple chunks.
+
+[The simple implementation of RepMaxCDC](/simple_rep_max_content_defined_chunker.go)
+isn't a lot more complex than MaxCDC's. However, it tends to perform
+poorly due to repeated hashing of the input.
+[The optimized implementation of RepMaxCDC](/rep_max_content_defined_chunker.go)
+addresses this, and provides the same throughput as FastCDC and MaxCDC.
+
+The optimized implementation works by keeping track of all points in the
+input data at which the hash value exceeds previously observed values.
+This results in a staircase. Whenever it notices that the distance since
+the start of the last step becomes too long (i.e., reaching the minimum
+chunk size), it knows it can select definitive cutting points up to the
+start of that step. The staircase may then be discarded.
 
 ## Chunk size distribution
 
