@@ -211,6 +211,11 @@ some topics we should try to explore:
   changes close to chunk boundaries. Should future versions of the
   algorithm use that function instead?
 
+- Maybe a high-quality rolling hash function should always evaluate to
+  zero when all bytes in the window are equal to each other. That way
+  cutting points are only considered in such positions if all bytes in
+  the chunk have the same value.
+
 - Is it possible to make SIMD aware implementations of the MaxCDC and
   RepMaxCDC algorithms? If not, how can the algorithms be modified to
   accommodate this?
