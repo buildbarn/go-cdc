@@ -204,10 +204,10 @@ and their behavior will no longer be altered. However, this doesn't mean
 we can't add improved algorithms to this repository later on. Here are
 some topics we should try to explore:
 
-- The MaxCDC and RepMaxCDC algorithms hash data using `h=(h<<1)|gear[b]`.
+- The MaxCDC and RepMaxCDC algorithms hash data using `h=(h<<1)+gear[b]`.
   This was done to be able to make comparisons with FastCDC fair.
   However, the Linux kernel tarball tests show that
-  `h=(h>>1)|(gear[b]>>1)` yields better results, as it better tolerates
+  `h=(h>>1)+(gear[b]>>1)` yields better results, as it better tolerates
   changes close to chunk boundaries. Should future versions of the
   algorithm use that function instead?
 
