@@ -190,24 +190,13 @@ MaxCDC that are only slightly larger than twice the minimum chunk size,
 will continue to be broken up further into two small chunks by
 RepMaxCDC.
 
-This distribution doesn't have a commonly accepted name. A simple
-function that generates random numbers along the same distribution is as
-follows:
-
-```go
-func generateRandomRepMaxCDCChunkSize(minimum int64) int64 {
-	additional := rand.Int63()
-	for additional >= minimum {
-		additional = rand.Int63n(additional - minimum + 1)
-	}
-	return minimum + additional
-}
-```
-
-The average chunk size before deduplicating has been observed to be
-roughly 67% the maximum chunk size. Could there be any relationship
-between this and the average utilization of nodes in a B-tree, which is
-$\ln(2) \approx 0.69$?
+If one were to think of a file as being the side of a long street, the
+minimum chunk size to be equal to the length of a car, and the start of
+each chunk being a position at which a car is parked, then this problem
+is analogous to Rényi's parking problem (1958). The expected density is
+known as Rényi's parking constant, which is approximately 0.7475979203.
+This seems to match our observations, where the mean chunk size (prior
+to deduplication) is the minimum size, divided by this constant.
 
 ## Future work
 
