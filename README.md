@@ -196,7 +196,8 @@ each chunk being a position at which a car is parked, then this problem
 is analogous to Rényi's parking problem (1958). The expected density is
 known as Rényi's parking constant, which is approximately 0.7475979203.
 This seems to match our observations, where the mean chunk size (prior
-to deduplication) is the minimum size, divided by this constant.
+to deduplication) is the minimum size, multiplied by
+$1/0.74759\ldots = 1.3376\dots$.
 
 ## Future work
 
