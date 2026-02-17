@@ -116,20 +116,19 @@ MaxCDC algorithm is invoked repeatedly until chunks can no longer be
 decomposed. This reduces the ratio between the minimum and maximum chunk
 size to 2, which is optimal.
 
-Like MaxCDC, this algorithm takes a parameter that controls the amount
-of data that is read ahead. While MaxCDC uses it to control the maximum
-chunk size, in this algorithm it only denotes the quality of the
-chunking that is performed (i.e., the horizon size). MaxCDC performs
-poorly if the ratio between the maximum and minimum chunk size becomes
-too large. RepMaxCDC's horizon size can be increased freely without
-reducing quality, though at some point there will be diminishing
-returns (>8 times the minimum chunk size).
+Like MaxCDC, RepMaxCDC takes a parameter that controls the amount of
+data that is read ahead. While MaxCDC uses it to control the maximum
+chunk size, in RepMaxCDC it only denotes the quality of the chunking
+that is performed (i.e., the horizon size). MaxCDC performs poorly if
+the ratio between the maximum and minimum chunk size becomes too large.
+RepMaxCDC's horizon size can be increased freely without reducing
+quality, though at some point there will be diminishing returns (>8
+times the minimum chunk size).
 
-It has been observed that this algorithm provides a rate of
-deduplication that is indistinguishable from MaxCDC, but only under the
-condition that MaxCDC's chunk size ratio is chosen optimally. An
-advantage of this algorithm over MaxCDC is therefore that less tuning is
-required.
+It has been observed that RepMaxCDC provides a rate of deduplication
+that is indistinguishable from MaxCDC, but only under the condition that
+MaxCDC's chunk size ratio is chosen optimally. An advantage of RepMaxCDC
+over MaxCDC is therefore that less tuning is required.
 
 Furthermore, for a given input it is also trivial to check whether it is
 already chunked, purely looking at its size. This is a property that
@@ -183,7 +182,7 @@ somewhat more frequently.
 
 ![Chunk size distribution for RepMaxCDC](/images/cumulative-sizes-repmaxcdc.png)
 
-With RepMaxCDC, the size distribution of chunks is clearly not linear.
+With RepMaxCDC, the size distribution of chunks is clearly not uniform.
 Namely, the algorithm prefers creating chunks closer to the minimum
 chunk size. This can be explained by the fact that any chunks created by
 MaxCDC that are only slightly larger than twice the minimum chunk size,
