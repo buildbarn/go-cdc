@@ -161,11 +161,12 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 			firstNewCompleteChunkStart := c.completeChunks[len(c.completeChunks)-1] + c.minSizeBytes
 			nextChunkEnd := oldChunks[len(oldChunks)-1].end
 			c.completeChunks = append(c.completeChunks, firstNewCompleteChunkStart+nextChunkEnd)
-			for i := len(oldChunks) - 2; i >= 0; i-- {
+			for i := len(oldChunks) - 3; nextChunkEnd >= c.minSizeBytes; i-- {
 				currentChunkEnd := oldChunks[i].end
 				if nextChunkEnd-currentChunkEnd >= c.minSizeBytes {
-					c.completeChunks = append(c.completeChunks, firstNewCompleteChunkStart+currentChunkEnd)
 					nextChunkEnd = currentChunkEnd
+					c.completeChunks = append(c.completeChunks, firstNewCompleteChunkStart+nextChunkEnd)
+					i--
 				}
 			}
 			slices.Reverse(c.completeChunks[previousCompleteChunksCount:])
