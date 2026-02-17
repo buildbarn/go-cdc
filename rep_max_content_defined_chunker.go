@@ -159,13 +159,12 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 			// we can complete all chunks up to this point.
 			previousCompleteChunksCount := len(c.completeChunks)
 			firstNewCompleteChunkStart := c.completeChunks[len(c.completeChunks)-1] + c.minSizeBytes
-			nextChunkEnd := oldChunks[len(oldChunks)-1].end
-			c.completeChunks = append(c.completeChunks, firstNewCompleteChunkStart+nextChunkEnd)
-			for i := len(oldChunks) - 3; nextChunkEnd >= c.minSizeBytes; i-- {
-				currentChunkEnd := oldChunks[i].end
-				if nextChunkEnd-currentChunkEnd >= c.minSizeBytes {
-					nextChunkEnd = currentChunkEnd
-					c.completeChunks = append(c.completeChunks, firstNewCompleteChunkStart+nextChunkEnd)
+			lastChunkEnd := oldChunks[len(oldChunks)-1].end
+			c.completeChunks = append(c.completeChunks, firstNewCompleteChunkStart+lastChunkEnd)
+			for maxChunkEnd, i := lastChunkEnd-c.minSizeBytes, len(oldChunks)-3; maxChunkEnd >= 0; i-- {
+				if chunkEnd := oldChunks[i].end; chunkEnd <= maxChunkEnd {
+					c.completeChunks = append(c.completeChunks, firstNewCompleteChunkStart+chunkEnd)
+					maxChunkEnd = chunkEnd - c.minSizeBytes
 					i--
 				}
 			}
