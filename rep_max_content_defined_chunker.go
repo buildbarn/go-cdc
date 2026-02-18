@@ -30,7 +30,7 @@ type repMaxContentDefinedChunker struct {
 
 	// The rolling hash value corresponding to the last incomplete
 	// chunk. Any new incomplete chunk must have a hash value that
-	// is hgiher than this one.
+	// is higher than this one.
 	bestHash uint64
 }
 
