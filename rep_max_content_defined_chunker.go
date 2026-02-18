@@ -132,7 +132,7 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 	} else {
 		// This is the very first chunk. We know that the first
 		// minSizeBytes positions can't contain a cut. Skip them.
-		oldChunks = append(oldChunks[:0], 0)
+		oldChunks = append(c.incompleteChunks[:0], 0)
 		for _, b := range d[c.minSizeBytes-64 : c.minSizeBytes] {
 			currentHash = (currentHash << 1) + gear[b]
 		}
