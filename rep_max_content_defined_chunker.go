@@ -183,7 +183,7 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 			}
 			slices.Reverse(c.completeChunks[previousCompleteChunksCount:])
 
-			oldChunks = append(oldChunks[:0], 0)
+			oldChunks = oldChunks[:1]
 			currentChunk = 0
 			currentHash = (currentHash << 1) + gear[completingByte]
 			bestHash = currentHash
