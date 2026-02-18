@@ -1,10 +1,10 @@
 module github.com/buildbarn/go-cdc
 
-go 1.21.3
+go 1.26.0
 
 require (
 	github.com/stretchr/testify v1.9.0
-	golang.org/x/sync v0.6.0
+	golang.org/x/sync v0.19.0
 )
 
 require (
