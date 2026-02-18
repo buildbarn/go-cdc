@@ -17,20 +17,23 @@ type repMaxContentDefinedChunker struct {
 	completeChunks []int
 
 	// List of cutting points that will determine the length of
-	// future chunks. The hashes of the cutting points in this list
-	// will be strictly monotonically increasing. Cutting points are
-	// addressed relative to the first eligible position at which
-	// they may be placed (i.e., the end of the last complete chunk,
-	// plus the minimum chunk size).
+	// future chunks. The hashes at the positions of the cutting
+	// points in this list will be strictly monotonically
+	// increasing.
+	//
+	// Cutting points are addressed relative to the first eligible
+	// position at which they may be placed (i.e., the end of the
+	// last complete chunk, plus the minimum chunk size). This means
+	// that the first entry is always equal to zero.
 	incompleteChunks []int
 
-	// The rolling hash value corresponding to the offset up to
+	// The rolling hash value corresponding to the position up to
 	// where input data has been processed.
 	currentHash uint64
 
-	// The rolling hash value corresponding to the last incomplete
-	// chunk. Any new incomplete chunk must have a hash value that
-	// is higher than this one.
+	// The rolling hash value corresponding to the position of last
+	// incomplete chunk. Any new incomplete chunk must have a hash
+	// value that is higher than this one.
 	bestHash uint64
 }
 
