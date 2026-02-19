@@ -2,6 +2,7 @@ package cdc_test
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"math/rand"
@@ -51,4 +52,40 @@ func TestRepMaxContentDefinedChunker(t *testing.T) {
 			}
 		})
 	}
+}
+
+func FuzzRepMaxContentDefinedChunker(f *testing.F) {
+	f.Fuzz(func(t *testing.T, minSizeBytes, horizonSizeBytes int, data []byte) {
+		if minSizeBytes < 64 || horizonSizeBytes < 0 {
+			return
+		}
+
+		chunker1 := cdc.NewSimpleRepMaxContentDefinedChunker(
+			bufio.NewReader(bytes.NewBuffer(data)),
+			minSizeBytes,
+			horizonSizeBytes,
+		)
+		chunker2 := cdc.NewRepMaxContentDefinedChunker(
+			bufio.NewReader(bytes.NewBuffer(data)),
+			minSizeBytes,
+			horizonSizeBytes,
+		)
+
+		for totalRead := 0; totalRead < len(data); {
+			chunk1, err1 := chunker1.ReadNextChunk()
+			require.NoError(t, err1)
+			require.LessOrEqual(t, min(minSizeBytes, len(data)), len(chunk1))
+			require.Greater(t, 2*minSizeBytes, len(chunk1))
+
+			chunk2, err2 := chunker2.ReadNextChunk()
+			require.NoError(t, err2)
+			require.Equal(t, chunk1, chunk2)
+			totalRead += len(chunk1)
+		}
+
+		_, err1 := chunker1.ReadNextChunk()
+		require.Equal(t, io.EOF, err1)
+		_, err2 := chunker2.ReadNextChunk()
+		require.Equal(t, io.EOF, err2)
+	})
 }
