@@ -78,6 +78,10 @@ var gear = [256]uint64{
 	0x8e3e4221d3614413, 0xef14d0d86bf1a22c, 0xe1d830d3f16c5ddb, 0xaabd2b2a451504e1,
 }
 
+// gearHashWindowSizeBytes corresponds to the number of bytes of input
+// data that are covered by the Gear rolling hash function.
+const gearHashWindowSizeBytes = 64
+
 type fastContentDefinedChunker struct {
 	r Peeker
 

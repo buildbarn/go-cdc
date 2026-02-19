@@ -86,7 +86,7 @@ func (c *maxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 		// was larger than maxSizeBytes-minSizeBytes. We know
 		// that the first minSizeBytes positions can't contain a
 		// cut. Skip them.
-		for _, b := range d[c.minSizeBytes-64 : c.minSizeBytes] {
+		for _, b := range d[c.minSizeBytes-gearHashWindowSizeBytes : c.minSizeBytes] {
 			previousChunk.hash = (previousChunk.hash << 1) + gear[b]
 		}
 		previousChunk.end = c.minSizeBytes

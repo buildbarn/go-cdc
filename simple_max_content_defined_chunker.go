@@ -53,7 +53,7 @@ func (c *simpleMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 	// Compute the rolling hash leading up to the first position at
 	// which we may place a cut.
 	var hash uint64
-	for _, b := range d[c.minSizeBytes-64 : c.minSizeBytes] {
+	for _, b := range d[c.minSizeBytes-gearHashWindowSizeBytes : c.minSizeBytes] {
 		hash = (hash << 1) + gear[b]
 	}
 
