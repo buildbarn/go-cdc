@@ -52,26 +52,26 @@ optimized implementation is nearly identical to plain FastCDC.
 ### Deduplication performance
 
 In order to validate the quality of the chunking performed by this
-algorithm, we have created uncompressed tarballs of 80 different
-versions of the Linux kernel (from v6.0 to v6.8, including all release
-candidates). Each of these tarballs is approximately 1.4 GB in size.
+algorithm, we have created uncompressed tarballs of [147 different
+versions of the Linux kernel](/cmd/chunk_tarball/kernel_versions),
+having a combined size of 216,551,813,643 bytes.
 
 When chunking all of these tarballs with FastCDC8KB, we see that each
-tarball is split into about 145k chunks. When deduplicating chunks
-across all 80 versions, 383,093 chunks remain that have a total size of
-3,872,754,501 bytes. Chunks thus have an average size of 10,109 bytes.
+tarball is split into about 143k chunks. When deduplicating chunks
+across all 147 versions, 652,557 chunks remain that have a total size of
+6,756,652,679 bytes. Chunks thus have an average size of 10,354 bytes.
 
 We then chunked the same tarballs using MaxCDC, using a minimum size of
-4,096 bytes and a maximum size of 14,785 bytes. After deduplicating,
-this yielded 374,833 chunks having a total size of 3,790,013,152 bytes.
+4,096 bytes and a maximum size of 15,051 bytes. After deduplicating,
+this yielded 641,290 chunks having a total size of 6,639,287,007 bytes.
 The minimum and maximum chunk size were intentionally chosen so that the
 average chunk size was almost identical to that of FastCDC8KB, namely
-10,111 bytes.
+10,353 bytes.
 
 We therefore conclude that for this specific benchmark the MaxCDC
-generated output consumes 2.14% less space than FastCDC8KB. Furthermore,
-the spread in chunk size is also far better when using MaxCDC (14,785
-B / 4,096 B ≈ 3.61) when compared to FastCDC8KB (64 KB / 2 KB = 32).
+generated output consumes 1.74% less space than FastCDC8KB. Furthermore,
+the spread in chunk size is also far better when using MaxCDC (15,051
+B / 4,096 B ≈ 3.67) when compared to FastCDC8KB (64 KB / 2 KB = 32).
 
 ### Tuning recommendations
 
@@ -102,12 +102,12 @@ is that this is only checked within a small region what the algorithm
 names the horizon. This results in a chunk size distribution that is
 geometric, similar to traditional Rabin fingerprinting implementations.
 
-Some testing of this construct in combination with the Gear hash
-function was performed, using the same methodology as described above.
-Deduplicating yielded 398,967 unique chunks with a combined size of
-4,031,959,354 bytes. This is 4.11% worse than FastCDC8KB and 6.38% worse
-than MaxCDC. The average chunk size was 10,105 bytes, which is similar
-to what was used for the previous tests.
+At some point in the past, some basic testing of this construct in
+combination with the Gear hash function was performed, using the same
+methodology as described above, and aiming for the same average chunk
+size. This resulted in >4% more space usage than FastCDC8KB and >6% more
+than MaxCDC. Because of these poor results, this implementation has not
+been preserved.
 
 ## RepMaxCDC: repeated application of MaxCDC
 
