@@ -7,6 +7,7 @@ import (
 
 type repMaxContentDefinedChunker struct {
 	r             Peeker
+	gearTable     *GearTable
 	minSizeBytes  int
 	peekSizeBytes int
 
@@ -58,9 +59,10 @@ type repMaxContentDefinedChunker struct {
 // rate of deduplication as MaxCDC. The advantage of this algorithm over
 // MaxCDC is that for a given input it is trivial to check whether it is
 // already chunked, purely looking at its size.
-func NewRepMaxContentDefinedChunker(r Peeker, minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
+func NewRepMaxContentDefinedChunker(r Peeker, gearTable *GearTable, minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
 	return &repMaxContentDefinedChunker{
 		r:             r,
+		gearTable:     gearTable,
 		minSizeBytes:  minSizeBytes,
 		peekSizeBytes: 2*minSizeBytes + horizonSizeBytes,
 
@@ -120,6 +122,7 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 
 	// Extract the final incomplete chunk from the stack, as it
 	// denotes where the previous call stopped hashing the input.
+	gear := &c.gearTable.values
 	var oldChunks []int
 	var currentChunk int
 	var currentHash uint64

@@ -11,6 +11,7 @@ type chunk struct {
 
 type maxContentDefinedChunker struct {
 	r             Peeker
+	gearTable     *GearTable
 	minSizeBytes  int
 	peekSizeBytes int
 
@@ -34,9 +35,10 @@ type maxContentDefinedChunker struct {
 // smaller. Furthermore, it is expected that this distribution also
 // causes the sequence of chunks to converge more quickly after parts
 // that differ between files have finished processing.
-func NewMaxContentDefinedChunker(r Peeker, minSizeBytes, maxSizeBytes int) ContentDefinedChunker {
+func NewMaxContentDefinedChunker(r Peeker, gearTable *GearTable, minSizeBytes, maxSizeBytes int) ContentDefinedChunker {
 	return &maxContentDefinedChunker{
 		r:             r,
+		gearTable:     gearTable,
 		minSizeBytes:  minSizeBytes,
 		peekSizeBytes: minSizeBytes + maxSizeBytes,
 		chunks:        make([]chunk, 1, maxSizeBytes/minSizeBytes+2),
@@ -76,6 +78,7 @@ func (c *maxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 	// The second from last chunk is used to derive the size of the
 	// last chunk and to determine whether a new potential cutting
 	// point is found.
+	gear := &c.gearTable.values
 	var previousChunk, currentChunk chunk
 	var oldChunks []chunk
 	if len(c.chunks) > 2 {

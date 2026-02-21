@@ -6,6 +6,7 @@ import (
 
 type simpleRepMaxContentDefinedChunker struct {
 	r             Peeker
+	gearTable     *GearTable
 	minSizeBytes  int
 	peekSizeBytes int
 
@@ -17,9 +18,10 @@ type simpleRepMaxContentDefinedChunker struct {
 // NewRepMaxContentDefinedChunker. However, this implementation is
 // simpler and less efficient. It is merely provided for testing
 // purposes.
-func NewSimpleRepMaxContentDefinedChunker(r Peeker, minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
+func NewSimpleRepMaxContentDefinedChunker(r Peeker, gearTable *GearTable, minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
 	return &simpleRepMaxContentDefinedChunker{
 		r:             r,
+		gearTable:     gearTable,
 		minSizeBytes:  minSizeBytes,
 		peekSizeBytes: 2*minSizeBytes + horizonSizeBytes,
 	}
@@ -53,6 +55,7 @@ func (c *simpleRepMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 
 	// Compute the rolling hash leading up to the first position at
 	// which we may place a cut.
+	gear := &c.gearTable.values
 	var initialHash uint64
 	for _, b := range d[c.minSizeBytes-gearHashWindowSizeBytes : c.minSizeBytes] {
 		initialHash = (initialHash << 1) + gear[b]

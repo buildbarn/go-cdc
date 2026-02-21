@@ -24,11 +24,13 @@ func TestRepMaxContentDefinedChunker(t *testing.T) {
 			for i := 0; i < 100; i++ {
 				chunker1 := cdc.NewSimpleRepMaxContentDefinedChunker(
 					bufio.NewReaderSize(io.LimitReader(r1, 1024*1024), 64*1024),
+					&cdc.FastContentDefinedChunkerGearTable,
 					/* minSizeBytes = */ 2*1024,
 					horizonSizeBytes,
 				)
 				chunker2 := cdc.NewRepMaxContentDefinedChunker(
 					bufio.NewReaderSize(io.LimitReader(r2, 1024*1024), 64*1024),
+					&cdc.FastContentDefinedChunkerGearTable,
 					/* minSizeBytes = */ 2*1024,
 					horizonSizeBytes,
 				)
@@ -55,18 +57,21 @@ func TestRepMaxContentDefinedChunker(t *testing.T) {
 }
 
 func FuzzRepMaxContentDefinedChunker(f *testing.F) {
-	f.Fuzz(func(t *testing.T, minSizeBytes, horizonSizeBytes int, data []byte) {
+	f.Fuzz(func(t *testing.T, gearSeed []byte, minSizeBytes, horizonSizeBytes int, data []byte) {
 		if minSizeBytes < 64 || horizonSizeBytes < 0 {
 			return
 		}
 
+		gearTable := cdc.NewSeededGearTable(gearSeed)
 		chunker1 := cdc.NewSimpleRepMaxContentDefinedChunker(
 			bufio.NewReader(bytes.NewBuffer(data)),
+			gearTable,
 			minSizeBytes,
 			horizonSizeBytes,
 		)
 		chunker2 := cdc.NewRepMaxContentDefinedChunker(
 			bufio.NewReader(bytes.NewBuffer(data)),
+			gearTable,
 			minSizeBytes,
 			horizonSizeBytes,
 		)

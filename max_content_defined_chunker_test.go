@@ -21,11 +21,13 @@ func TestMaxContentDefinedChunker(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		chunker1 := cdc.NewSimpleMaxContentDefinedChunker(
 			bufio.NewReaderSize(io.LimitReader(r1, 1024*1024), 64*1024),
+			&cdc.FastContentDefinedChunkerGearTable,
 			/* minSizeBytes = */ 2*1024,
 			/* maxSizeBytes = */ 16*1024,
 		)
 		chunker2 := cdc.NewMaxContentDefinedChunker(
 			bufio.NewReaderSize(io.LimitReader(r2, 1024*1024), 64*1024),
+			&cdc.FastContentDefinedChunkerGearTable,
 			/* minSizeBytes = */ 2*1024,
 			/* maxSizeBytes = */ 16*1024,
 		)
@@ -50,18 +52,21 @@ func TestMaxContentDefinedChunker(t *testing.T) {
 }
 
 func FuzzMaxContentDefinedChunker(f *testing.F) {
-	f.Fuzz(func(t *testing.T, minSizeBytes, maxSizeBytes int, data []byte) {
+	f.Fuzz(func(t *testing.T, gearSeed []byte, minSizeBytes, maxSizeBytes int, data []byte) {
 		if minSizeBytes < 64 || maxSizeBytes < minSizeBytes {
 			return
 		}
 
+		gearTable := cdc.NewSeededGearTable(gearSeed)
 		chunker1 := cdc.NewSimpleMaxContentDefinedChunker(
 			bufio.NewReader(bytes.NewBuffer(data)),
+			gearTable,
 			minSizeBytes,
 			maxSizeBytes,
 		)
 		chunker2 := cdc.NewMaxContentDefinedChunker(
 			bufio.NewReader(bytes.NewBuffer(data)),
+			gearTable,
 			minSizeBytes,
 			maxSizeBytes,
 		)
