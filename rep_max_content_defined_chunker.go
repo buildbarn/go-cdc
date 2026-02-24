@@ -120,7 +120,6 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 			return nil, io.EOF
 		}
 		c.previousChunkSizeBytes = len(d)
-		c.incompleteChunks = c.incompleteChunks[:0]
 		return d, nil
 	}
 	d = d[:len(d)-c.minSizeBytes]
