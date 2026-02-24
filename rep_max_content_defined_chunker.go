@@ -11,10 +11,14 @@ type repMaxContentDefinedChunker struct {
 	minSizeBytes  int
 	peekSizeBytes int
 
+	// The size of the previous chunk returned by ReadNextChunk().
+	// This amount of data will be discarded from the input stream
+	// at the start of the next call to ReadNextChunk().
+	previousChunkSizeBytes int
+
 	// List of chunks for which no future data can influence their
-	// length. The first element corresponds to the amount of data
-	// belonging to the chunk that was returned by the previous call
-	// to ReadNextChunk() that hasn't been discarded yet.
+	// length. For each chunk, its size is stored. Chunks are stored
+	// in reverse order, so that they can be popped from the end.
 	completeChunks []int
 
 	// List of cutting points that will determine the length of
@@ -66,7 +70,7 @@ func NewRepMaxContentDefinedChunker(r Peeker, gearTable *GearTable, minSizeBytes
 		minSizeBytes:  minSizeBytes,
 		peekSizeBytes: 2*minSizeBytes + horizonSizeBytes,
 
-		completeChunks: make([]int, 1, horizonSizeBytes/minSizeBytes+2),
+		completeChunks: make([]int, 0, horizonSizeBytes/minSizeBytes+1),
 		// Even though this list can grow to become proportional
 		// to the size of the horizon, this is highly unlikely.
 		// As we progress, it becomes increasingly harder to
@@ -79,10 +83,8 @@ func NewRepMaxContentDefinedChunker(r Peeker, gearTable *GearTable, minSizeBytes
 
 func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 	// Discard data that was handed out by the previous call.
-	discardedSizeBytes, err := c.r.Discard(c.completeChunks[0])
-	for i := range c.completeChunks {
-		c.completeChunks[i] -= discardedSizeBytes
-	}
+	discardedSizeBytes, err := c.r.Discard(c.previousChunkSizeBytes)
+	c.previousChunkSizeBytes -= discardedSizeBytes
 	if err != nil {
 		return nil, err
 	}
@@ -92,12 +94,15 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 	// us to discard data as aggressively as possible. This reduces
 	// the amount of data that needs to be retained (copied) when
 	// the read buffer is refilled.
-	if len(c.completeChunks) > 1 {
-		d, err := c.r.Peek(c.completeChunks[1])
+	completeChunks := c.completeChunks
+	if len(completeChunks) > 0 {
+		firstChunk := completeChunks[len(completeChunks)-1]
+		d, err := c.r.Peek(firstChunk)
 		if err != nil {
 			return nil, err
 		}
-		c.completeChunks = append(c.completeChunks[:0], c.completeChunks[1:]...)
+		c.previousChunkSizeBytes = firstChunk
+		c.completeChunks = completeChunks[:len(completeChunks)-1]
 		return d, nil
 	}
 
@@ -114,7 +119,7 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 		if len(d) == 0 {
 			return nil, io.EOF
 		}
-		c.completeChunks = append(c.completeChunks[:0], len(d))
+		c.previousChunkSizeBytes = len(d)
 		c.incompleteChunks = c.incompleteChunks[:0]
 		return d, nil
 	}
@@ -142,17 +147,16 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 		bestHash = currentHash
 	}
 
+	uncompletedRegion := d[c.minSizeBytes+currentChunk:]
 	for {
 		// Start hashing data where the previous call left off.
 		// Stop hashing before the distance between two
 		// consecutive potential cutting points becomes
 		// minSizeBytes in size, as this allows us to complete a
 		// chunk.
-		hashRegion := d[c.completeChunks[len(c.completeChunks)-1]+c.minSizeBytes+currentChunk:]
+		hashRegion := uncompletedRegion
 		originalOldChunksCount := -1
-		var completingByte byte
 		if bytesBeforeMinChunkSize := oldChunks[len(oldChunks)-1] + c.minSizeBytes - 1 - currentChunk; len(hashRegion) > bytesBeforeMinChunkSize {
-			completingByte = hashRegion[bytesBeforeMinChunkSize]
 			hashRegion = hashRegion[:bytesBeforeMinChunkSize]
 			originalOldChunksCount = len(oldChunks)
 		} else if len(hashRegion) == 0 {
@@ -173,31 +177,38 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 			// points, and the next byte is minSizeBytes
 			// away from the last cutting point. This means
 			// we can complete all chunks up to this point.
-			previousCompleteChunksCount := len(c.completeChunks)
-			firstNewCompleteChunkStart := c.completeChunks[len(c.completeChunks)-1] + c.minSizeBytes
-			lastChunk := oldChunks[len(oldChunks)-1]
-			c.completeChunks = append(c.completeChunks, firstNewCompleteChunkStart+lastChunk)
-			for maxChunk, i := lastChunk-c.minSizeBytes, len(oldChunks)-3; maxChunk >= 0; i-- {
-				if chunk := oldChunks[i]; chunk <= maxChunk {
-					c.completeChunks = append(c.completeChunks, firstNewCompleteChunkStart+chunk)
-					maxChunk = chunk - c.minSizeBytes
+			previousCompleteChunksCount := len(completeChunks)
+			nextChunk := oldChunks[len(oldChunks)-1]
+			for i := len(oldChunks) - 3; nextChunk >= c.minSizeBytes; i-- {
+				chunk := oldChunks[i]
+				if sizeBytes := nextChunk - chunk; sizeBytes >= c.minSizeBytes {
+					completeChunks = append(completeChunks, sizeBytes)
+					nextChunk = chunk
 					i--
 				}
 			}
-			slices.Reverse(c.completeChunks[previousCompleteChunksCount:])
+			completeChunks = append(completeChunks, c.minSizeBytes+nextChunk)
+			slices.Reverse(completeChunks[previousCompleteChunksCount:])
 
 			oldChunks = oldChunks[:1]
 			currentChunk = 0
-			currentHash = (currentHash << 1) + gear[completingByte]
+			currentHash = (currentHash << 1) + gear[uncompletedRegion[len(hashRegion)]]
 			bestHash = currentHash
+			uncompletedRegion = uncompletedRegion[len(hashRegion)+1:]
 		} else {
 			currentChunk += len(hashRegion)
+			uncompletedRegion = uncompletedRegion[len(hashRegion):]
 		}
 	}
 
 	// Processed the full horizon. Return the first chunk.
 	incompleteChunks := append(oldChunks, currentChunk)
-	if len(c.completeChunks) == 1 {
+	var firstChunk int
+	if len(completeChunks) > 0 {
+		slices.Reverse(completeChunks)
+		firstChunk = completeChunks[len(completeChunks)-1]
+		completeChunks = completeChunks[:len(completeChunks)-1]
+	} else {
 		// The process above did not yield any complete chunks,
 		// either because we reached the end of the file or the
 		// horizon size wasn't large enough.
@@ -213,9 +224,7 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 				i--
 			}
 		}
-		firstChunk := c.minSizeBytes + incompleteChunks[firstChunkIndex]
-		firstChunkCompleteOffset := c.completeChunks[len(c.completeChunks)-1] + firstChunk
-		c.completeChunks = append(c.completeChunks, firstChunkCompleteOffset)
+		firstChunk = c.minSizeBytes + incompleteChunks[firstChunkIndex]
 
 		// There will be potential cutting points after the
 		// selected one that are no longer eligible, as those
@@ -244,16 +253,16 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 					// This should only happen rarely,
 					// especially if the horizon size is
 					// sufficiently large.
-					nextChunkStart := d[firstChunkCompleteOffset:][:c.minSizeBytes+offsetInSecondChunk-1]
-					currentRecomputedHash := uint64(0)
-					for _, b := range nextChunkStart[c.minSizeBytes-gearHashWindowSizeBytes : c.minSizeBytes] {
+					secondChunkRecomputedRegion := d[firstChunk:][:c.minSizeBytes+offsetInSecondChunk-1]
+					var currentRecomputedHash uint64
+					for _, b := range secondChunkRecomputedRegion[c.minSizeBytes-gearHashWindowSizeBytes : c.minSizeBytes] {
 						currentRecomputedHash = (currentRecomputedHash << 1) + gear[b]
 					}
 					incompleteChunks[0] = 0
 					bestRecomputedHash := currentRecomputedHash
 					recomputedChunkIndex := 1
 					originalChunksCount := len(incompleteChunks)
-					for i, b := range nextChunkStart[c.minSizeBytes:] {
+					for i, b := range secondChunkRecomputedRegion[c.minSizeBytes:] {
 						currentRecomputedHash = (currentRecomputedHash << 1) + gear[b]
 						if bestRecomputedHash < currentRecomputedHash {
 							bestRecomputedHash = currentRecomputedHash
@@ -293,9 +302,10 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 			}
 		}
 	}
-	c.completeChunks = append(c.completeChunks[:0], c.completeChunks[1:]...)
+	c.previousChunkSizeBytes = firstChunk
+	c.completeChunks = completeChunks
 	c.incompleteChunks = incompleteChunks
 	c.currentHash = currentHash
 	c.bestHash = bestHash
-	return d[:c.completeChunks[0]], nil
+	return d[:firstChunk], nil
 }
