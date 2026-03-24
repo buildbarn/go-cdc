@@ -55,7 +55,8 @@ func main() {
 		expectedSkewOut := 0.1449 - 1.162/math.Pow(r+3.015, 1.274)
 
 		realSkewModified := (float64(totalSizeSize)/float64(totalSize))/basicAverage - 1
-		expectedSkewModified := 0.4275 - 0.245*math.Pow(r, -0.40) - 0.373*math.Pow(r, -1.55)
+		logR := math.Log(r)
+		expectedSkewModified := (logR * (0.3973*logR - 0.1081)) / (logR*logR - 1.1511*logR + 3.5698)
 
 		realCoverage := float64(coveredSize) / float64(totalSize)
 		expectedCoverage := math.Pow(r, 2.75) / (math.Pow(r, 2.75) + math.Pow(2, 2.75-1))
@@ -65,16 +66,16 @@ func main() {
 			r,
 			realPlateauProbability,
 			expectedPlateauProbability,
-			realPlateauProbability/expectedPlateauProbability,
+			realPlateauProbability-expectedPlateauProbability,
 			realSkewOut,
 			expectedSkewOut,
-			realSkewOut/expectedSkewOut,
+			realSkewOut-expectedSkewOut,
 			realSkewModified,
 			expectedSkewModified,
-			realSkewModified/expectedSkewModified,
+			realSkewModified-expectedSkewModified,
 			realCoverage,
 			expectedCoverage,
-			realCoverage/expectedCoverage,
+			realCoverage-expectedCoverage,
 		)
 	}
 }
