@@ -14,12 +14,21 @@ import (
 )
 
 func main() {
+	// Shuffle the order in which we simulate each possible minSize.
+	// This allows us to simulate all cases, even if we were to
+	// interrupt and restart this tool.
+	const buckets = 1000
+	var minSizes [buckets - 1]int
+	for i := 0; i < len(minSizes); i++ {
+		minSizes[i] = i + 1
+	}
+	rand.Shuffle(len(minSizes), func(i, j int) {
+		minSizes[i], minSizes[j] = minSizes[j], minSizes[i]
+	})
+
 	concurrency := semaphore.NewWeighted(int64(runtime.NumCPU()))
 	for {
-		const buckets = 1000
-		for minSizeIter := 1; minSizeIter < buckets; minSizeIter++ {
-			minSize := minSizeIter
-
+		for _, minSize := range minSizes {
 			concurrency.Acquire(context.Background(), 1)
 			go func() {
 				defer concurrency.Release(1)
