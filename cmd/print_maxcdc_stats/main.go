@@ -14,6 +14,9 @@ func main() {
 		samplesFile := fmt.Sprintf("../simulate_maxcdc/samples/%d/%d", buckets, minSize)
 		existingSamples, err := os.ReadFile(samplesFile)
 		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
 			log.Fatal(err)
 		}
 		if len(existingSamples) != 8*buckets {
