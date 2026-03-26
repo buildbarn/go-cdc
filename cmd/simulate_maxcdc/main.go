@@ -14,10 +14,12 @@ import (
 )
 
 func main() {
+	const buckets = 1000
+	os.MkdirAll(fmt.Sprintf("samples/%d", buckets), 0o777)
+
 	// Shuffle the order in which we simulate each possible minSize.
 	// This allows us to simulate all cases, even if we were to
 	// interrupt and restart this tool.
-	const buckets = 1000
 	var minSizes [buckets - 1]int
 	for i := 0; i < len(minSizes); i++ {
 		minSizes[i] = i + 1
