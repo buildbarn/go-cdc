@@ -8,7 +8,7 @@ unique_chunks = set()
 total_chunk_size_before_deduplication = 0
 chunk_sizes_before_deduplication = Counter()
 for line in sys.stdin:
-    hash, size_bytes = line.strip().split("-")
+    hash, size_bytes = line.strip().split(",")
     size_bytes = int(size_bytes)
     chunks += 1
     total_chunk_size_before_deduplication += size_bytes
