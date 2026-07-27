@@ -94,3 +94,40 @@ func FuzzRepMaxContentDefinedChunker(f *testing.F) {
 		require.Equal(t, io.EOF, err2)
 	})
 }
+
+func BenchmarkRepMaxContentDefinedChunker(b *testing.B) {
+	// Chunking parameters as used by Bazel for remote cache
+	// chunking: a minimum chunk size of 256 KiB and a horizon of
+	// eight times that.
+	const (
+		minSizeBytes     = 256 * 1024
+		horizonSizeBytes = 8 * minSizeBytes
+		peekSizeBytes    = 2*minSizeBytes + horizonSizeBytes
+		sizeBytes        = 64 * 1024 * 1024
+	)
+
+	data := make([]byte, sizeBytes)
+	rand.New(rand.NewSource(1)).Read(data)
+	reader := bytes.NewReader(data)
+	bufferedReader := bufio.NewReaderSize(reader, peekSizeBytes)
+
+	b.SetBytes(sizeBytes)
+	for b.Loop() {
+		reader.Reset(data)
+		bufferedReader.Reset(reader)
+		chunker := cdc.NewRepMaxContentDefinedChunker(
+			bufferedReader,
+			&cdc.FastContentDefinedChunkerGearTable,
+			minSizeBytes,
+			horizonSizeBytes,
+		)
+		for {
+			if _, err := chunker.ReadNextChunk(); err != nil {
+				if err == io.EOF {
+					break
+				}
+				b.Fatal(err)
+			}
+		}
+	}
+}
