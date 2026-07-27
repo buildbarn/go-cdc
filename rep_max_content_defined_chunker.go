@@ -163,8 +163,64 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 		}
 
 		// Preserve all offsets at which the hash increases.
-		for i, b := range hashRegion {
-			currentHash = (currentHash << 1) + gear[b]
+		// The loop is unrolled manually, as the Go compiler
+		// does not do it. Eight was empirically determined to
+		// give good performance.
+		i := 0
+		for ; i+8 <= len(hashRegion); i += 8 {
+			b := [8]byte(hashRegion[i : i+8])
+			s := gear[b[0]]
+			h := (currentHash << 1) + s
+			if bestHash < h {
+				bestHash = h
+				oldChunks = append(oldChunks, currentChunk+i+1)
+			}
+			s = (s << 1) + gear[b[1]]
+			h = (currentHash << 2) + s
+			if bestHash < h {
+				bestHash = h
+				oldChunks = append(oldChunks, currentChunk+i+2)
+			}
+			s = (s << 1) + gear[b[2]]
+			h = (currentHash << 3) + s
+			if bestHash < h {
+				bestHash = h
+				oldChunks = append(oldChunks, currentChunk+i+3)
+			}
+			s = (s << 1) + gear[b[3]]
+			h = (currentHash << 4) + s
+			if bestHash < h {
+				bestHash = h
+				oldChunks = append(oldChunks, currentChunk+i+4)
+			}
+			s = (s << 1) + gear[b[4]]
+			h = (currentHash << 5) + s
+			if bestHash < h {
+				bestHash = h
+				oldChunks = append(oldChunks, currentChunk+i+5)
+			}
+			s = (s << 1) + gear[b[5]]
+			h = (currentHash << 6) + s
+			if bestHash < h {
+				bestHash = h
+				oldChunks = append(oldChunks, currentChunk+i+6)
+			}
+			s = (s << 1) + gear[b[6]]
+			h = (currentHash << 7) + s
+			if bestHash < h {
+				bestHash = h
+				oldChunks = append(oldChunks, currentChunk+i+7)
+			}
+			s = (s << 1) + gear[b[7]]
+			h = (currentHash << 8) + s
+			if bestHash < h {
+				bestHash = h
+				oldChunks = append(oldChunks, currentChunk+i+8)
+			}
+			currentHash = h
+		}
+		for ; i < len(hashRegion); i++ {
+			currentHash = (currentHash << 1) + gear[hashRegion[i]]
 			if bestHash < currentHash {
 				bestHash = currentHash
 				oldChunks = append(oldChunks, currentChunk+i+1)
