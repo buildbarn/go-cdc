@@ -48,15 +48,124 @@ func (c *fastContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 	if len(d) >= normalSizeBytes {
 		// Large object. Use two different bitmasks.
 		var hash uint64
-		for i, b := range d[minSizeBytes:normalSizeBytes] {
-			hash = (hash << 1) + gear[b]
+		hashRegion := d[minSizeBytes:normalSizeBytes]
+		i := 0
+		for ; i+8 <= len(hashRegion); i += 8 {
+			b := [8]byte(hashRegion[i : i+8])
+			s := gear[b[0]]
+			h := (hash << 1) + s
+			if h&maskS == 0 {
+				c.previousChunkSizeBytes = minSizeBytes + i + 1
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[1]]
+			h = (hash << 2) + s
+			if h&maskS == 0 {
+				c.previousChunkSizeBytes = minSizeBytes + i + 2
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[2]]
+			h = (hash << 3) + s
+			if h&maskS == 0 {
+				c.previousChunkSizeBytes = minSizeBytes + i + 3
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[3]]
+			h = (hash << 4) + s
+			if h&maskS == 0 {
+				c.previousChunkSizeBytes = minSizeBytes + i + 4
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[4]]
+			h = (hash << 5) + s
+			if h&maskS == 0 {
+				c.previousChunkSizeBytes = minSizeBytes + i + 5
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[5]]
+			h = (hash << 6) + s
+			if h&maskS == 0 {
+				c.previousChunkSizeBytes = minSizeBytes + i + 6
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[6]]
+			h = (hash << 7) + s
+			if h&maskS == 0 {
+				c.previousChunkSizeBytes = minSizeBytes + i + 7
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[7]]
+			h = (hash << 8) + s
+			if h&maskS == 0 {
+				c.previousChunkSizeBytes = minSizeBytes + i + 8
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			hash = h
+		}
+		for ; i < len(hashRegion); i++ {
+			hash = (hash << 1) + gear[hashRegion[i]]
 			if hash&maskS == 0 {
 				c.previousChunkSizeBytes = minSizeBytes + i
 				return d[:c.previousChunkSizeBytes], nil
 			}
 		}
-		for i, b := range d[normalSizeBytes:] {
-			hash = (hash << 1) + gear[b]
+
+		hashRegion = d[normalSizeBytes:]
+		i = 0
+		for ; i+8 <= len(hashRegion); i += 8 {
+			b := [8]byte(hashRegion[i : i+8])
+			s := gear[b[0]]
+			h := (hash << 1) + s
+			if h&maskL == 0 {
+				c.previousChunkSizeBytes = normalSizeBytes + i + 1
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[1]]
+			h = (hash << 2) + s
+			if h&maskL == 0 {
+				c.previousChunkSizeBytes = normalSizeBytes + i + 2
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[2]]
+			h = (hash << 3) + s
+			if h&maskL == 0 {
+				c.previousChunkSizeBytes = normalSizeBytes + i + 3
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[3]]
+			h = (hash << 4) + s
+			if h&maskL == 0 {
+				c.previousChunkSizeBytes = normalSizeBytes + i + 4
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[4]]
+			h = (hash << 5) + s
+			if h&maskL == 0 {
+				c.previousChunkSizeBytes = normalSizeBytes + i + 5
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[5]]
+			h = (hash << 6) + s
+			if h&maskL == 0 {
+				c.previousChunkSizeBytes = normalSizeBytes + i + 6
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[6]]
+			h = (hash << 7) + s
+			if h&maskL == 0 {
+				c.previousChunkSizeBytes = normalSizeBytes + i + 7
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[7]]
+			h = (hash << 8) + s
+			if h&maskL == 0 {
+				c.previousChunkSizeBytes = normalSizeBytes + i + 8
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			hash = h
+		}
+		for ; i < len(hashRegion); i++ {
+			hash = (hash << 1) + gear[hashRegion[i]]
 			if hash&maskL == 0 {
 				c.previousChunkSizeBytes = normalSizeBytes + i
 				return d[:c.previousChunkSizeBytes], nil
@@ -65,8 +174,62 @@ func (c *fastContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 	} else if len(d) >= minSizeBytes {
 		// Small object. Only use a single bitmask.
 		var hash uint64
-		for i, b := range d[minSizeBytes:] {
-			hash = (hash << 1) + gear[b]
+		hashRegion := d[minSizeBytes:]
+		i := 0
+		for ; i+8 <= len(hashRegion); i += 8 {
+			b := [8]byte(hashRegion[i : i+8])
+			s := gear[b[0]]
+			h := (hash << 1) + s
+			if h&maskS == 0 {
+				c.previousChunkSizeBytes = minSizeBytes + i + 1
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[1]]
+			h = (hash << 2) + s
+			if h&maskS == 0 {
+				c.previousChunkSizeBytes = minSizeBytes + i + 2
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[2]]
+			h = (hash << 3) + s
+			if h&maskS == 0 {
+				c.previousChunkSizeBytes = minSizeBytes + i + 3
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[3]]
+			h = (hash << 4) + s
+			if h&maskS == 0 {
+				c.previousChunkSizeBytes = minSizeBytes + i + 4
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[4]]
+			h = (hash << 5) + s
+			if h&maskS == 0 {
+				c.previousChunkSizeBytes = minSizeBytes + i + 5
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[5]]
+			h = (hash << 6) + s
+			if h&maskS == 0 {
+				c.previousChunkSizeBytes = minSizeBytes + i + 6
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[6]]
+			h = (hash << 7) + s
+			if h&maskS == 0 {
+				c.previousChunkSizeBytes = minSizeBytes + i + 7
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			s = (s << 1) + gear[b[7]]
+			h = (hash << 8) + s
+			if h&maskS == 0 {
+				c.previousChunkSizeBytes = minSizeBytes + i + 8
+				return d[:c.previousChunkSizeBytes], nil
+			}
+			hash = h
+		}
+		for ; i < len(hashRegion); i++ {
+			hash = (hash << 1) + gear[hashRegion[i]]
 			if hash&maskS == 0 {
 				c.previousChunkSizeBytes = minSizeBytes + i
 				return d[:c.previousChunkSizeBytes], nil
