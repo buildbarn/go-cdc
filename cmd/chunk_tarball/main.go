@@ -48,7 +48,7 @@ func main() {
 		}
 	})
 	g.Go(func() error {
-		r := cdc.NewFastContentDefinedChunker(bufio.NewReaderSize(pr, 16*1024*1024), &cdc.FastContentDefinedChunkerGearTable)
+		r := cdc.NewFastContentDefinedChunker(bufio.NewReaderSize(pr, 16*1024*1024), &cdc.FastContentDefinedChunkerGearTable, 8192)
 		// r := cdc.NewMaxContentDefinedChunker(bufio.NewReaderSize(pr, 16*1024*1024), &cdc.FastContentDefinedChunkerGearTable, 4*1024, 15051)
 		// r := cdc.NewRepMaxContentDefinedChunker(bufio.NewReaderSize(pr, 16*1024*1024), &cdc.FastContentDefinedChunkerGearTable, 7608, 8*7608)
 
