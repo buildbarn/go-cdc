@@ -1,226 +1,58 @@
 # Content Defined Chunking playground
 
-This repository provides implementations for a small number of
-[Content Defined Chunking](https://en.wikipedia.org/wiki/Rolling_hash)
-algorithms for the Go programming language. These implementations are
-provided for testing/benchmarking purposes.
+This repository provides reference implementations of the
+RepMaxCDC "Repeated Maximum" [Content-Defined
+Chunking](https://en.wikipedia.org/wiki/Rolling_hash) function, which is
+written in the Go programming language. RepMaxCDC is
+[one of the standard CDC functions of Bazel's remote execution protocol](https://github.com/bazelbuild/remote-apis/pull/282).
+An implementation written in Java
+[is part of Bazel](https://github.com/bazelbuild/bazel/pull/30131).
 
-This repository was created in response to
-[Bazel remote-apis PR #282](https://github.com/bazelbuild/remote-apis/pull/282),
-where support for Content Defined Chunking is considered for inclusion
-into the remote execution protocol that is used by tools like Bazel and
-Buildbarn.
+RepMaxCDC provides:
 
-## MaxCDC: content defined chunking with lookahead
+- **Tight chunk size bounds:** Most CDC functions generate chunks
+  whose minimum and maximum size are still a factor of 16 or 32 apart.
+  RepMaxCDC is capable of generating chunks with sizes in range
+  $[n, 2n-1)$, while offering excellent deduplication rates.
 
-Algorithms like [Rabin fingerprinting](https://github.com/fd0/rabin-cdc)
-and [FastCDC](https://www.usenix.org/conference/atc16/technical-sessions/presentation/xia)
-all work on the basis that they perform a simple forward scan through
-the input data. A decision to introduce a cutting point between chunks
-is made when the bytes right before it are hashed. This simple design
-has some limitations. For example:
+- **Excellent parallelism:** RepMaxCDC allows performing targeted
+  searches for cutting points. This makes it possible to partition a
+  large file into roughly equally sized pieces. These can be chunked in
+  parallel.
 
-- If no cutting point is found before the maximum chunk size is reached,
-  the algorithm is forced to make a cut at an undesirable offset. It
-  will not be able to select a "close to optimal" cutting point.
+- **Size-based checking:** With chunks always falling in range $[n, 2n-1)$,
+  it is trivial to check whether a file can be split into multiple
+  chunks, purely looking at its size. This property, which other CDC
+  functions often lack, was needed to add support for chunking to
+  Bazel's existing remote execution protocol in a backward compatible
+  way.
 
-- When implemented trivially, the size of chunks is expected to follow a
-  geometric distribution. This means that there is a relatively large
-  spread in size between the smallest and largest chunks. For example,
-  for FastCDC8KB the largest chunks can be 32 times as large as the
-  smallest ones (2 KB vs 64 KB).
+Two implementations of RepMaxCDC are included:
 
-The MaxCDC algorithm attempts to address this by performing lookaheads.
-Instead of selecting cutting points on the fly, it always scans the
-input up to the maximum limit and only afterwards chooses a cutting
-point that is most desirable. It considers the most desirable cutting
-point to be the one for which the Gear hash has the highest value, hence
-the name MaxCDC.
+- [`simple_rep_max_content_defined_chunker.go`](/simple_rep_max_content_defined_chunker.go):
+  A very simple, but inefficient implementation that hashes input data
+  repeatedly.
 
-### Runtime performance
+- [`rep_max_content_defined_chunker.go`](/rep_max_content_defined_chunker.go):
+  An optimized implementation that eliminates redundant hashing by
+  storing state in lists that are preserved across calls.
 
-[Implementing MaxCDC trivially](/simple_max_content_defined_chunker.go)
-has the disadvantage that input data is hashed redundantly. It may
-process input up to the maximum limit and select a cutting point close
-to the minimum limit. Any data in between those two limits would be
-hashed again during the next iteration. To eliminate this overhead, we
-provide [an optimized implementation](/max_content_defined_chunker.go)
-that preserves potential future cutting points on a stack, allowing
-subsequent calls to reuse this information. Performance of this
-optimized implementation is nearly identical to plain FastCDC.
+Tests are used to validate that both implementations yield the same
+results.
 
-### Deduplication performance
+This repository also contains a copy of a paper titled
+["Content-Defined Chunking with tight chunk size bounds"](/papers/cdc.pdf),
+which provides a formal description and analysis of RepMaxCDC. It also
+describes some simpler algorithms on which RepMaxCDC is based: MaxCDC
+("Maximum") and RecMaxCDC ("Recursive Maximum"). This paper can be
+referenced as follows:
 
-In order to validate the quality of the chunking performed by this
-algorithm, we have created uncompressed tarballs of [147 different
-versions of the Linux kernel](/cmd/chunk_tarball/kernel_versions),
-having a combined size of 216,551,813,643 bytes.
-
-When chunking all of these tarballs with FastCDC8KB, we see that each
-tarball is split into about 143k chunks. When deduplicating chunks
-across all 147 versions, 652,557 chunks remain that have a total size of
-6,756,652,679 bytes. Chunks thus have an average size of 10,354 bytes.
-
-We then chunked the same tarballs using MaxCDC, using a minimum size of
-4,096 bytes and a maximum size of 15,051 bytes. After deduplicating,
-this yielded 641,290 chunks having a total size of 6,639,287,007 bytes.
-The minimum and maximum chunk size were intentionally chosen so that the
-average chunk size was almost identical to that of FastCDC8KB, namely
-10,353 bytes.
-
-We therefore conclude that for this specific benchmark the MaxCDC
-generated output consumes 1.74% less space than FastCDC8KB. Furthermore,
-the spread in chunk size is also far better when using MaxCDC (15,051
-B / 4,096 B ≈ 3.67) when compared to FastCDC8KB (64 KB / 2 KB = 32).
-
-### Tuning recommendations
-
-Assume you use MaxCDC to chunk two non-identical, but similar files.
-Making the ratio between the minimum and maximum permitted chunk size
-too small leads to bad performance, because it causes the streams of
-chunks to take longer to converge after differing parts have finished
-processing.
-
-Conversely, making the ratio between the minimum and maximum permitted
-chunk size too large is also suboptimal. The reason being that large
-chunks have a lower probability of getting deduplicated against others.
-This causes the average size of chunks stored in a deduplicating data
-store to become higher than that of the chunking algorithm itself.
-
-When chunking and deduplicating the Linux kernel source tarballs, we
-observed that for that specific data set the optimal ratio between the
-minimum and maximum chunk size was somewhere close to 4x. We therefore
-recommend that this ratio is used as a starting point.
-
-### Relationship to RDC FilterMax
-
-Microsoft's [Remote Differential Compression algorithm](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-rdc)
-uses a content defined chunking algorithm named FilterMax. Just like
-MaxCDC, it attempts to insert cutting points at positions where the hash
-value of a rolling hash function is a local maximum. The main difference
-is that this is only checked within a small region what the algorithm
-names the horizon. This results in a chunk size distribution that is
-geometric, similar to traditional Rabin fingerprinting implementations.
-
-At some point in the past, some basic testing of this construct in
-combination with the Gear hash function was performed, using the same
-methodology as described above, and aiming for the same average chunk
-size. This resulted in >4% more space usage than FastCDC8KB and >6% more
-than MaxCDC. Because of these poor results, this implementation has not
-been preserved.
-
-## RepMaxCDC: repeated application of MaxCDC
-
-RepMaxCDC is a logical extension to MaxCDC. Namely, it behaves as if the
-MaxCDC algorithm is invoked repeatedly until chunks can no longer be
-decomposed. This reduces the ratio between the minimum and maximum chunk
-size to 2, which is optimal.
-
-Like MaxCDC, RepMaxCDC takes a parameter that controls the amount of
-data that is read ahead. While MaxCDC uses it to control the maximum
-chunk size, in RepMaxCDC it only denotes the quality of the chunking
-that is performed (i.e., the horizon size). MaxCDC performs poorly if
-the ratio between the maximum and minimum chunk size becomes too large.
-RepMaxCDC's horizon size can be increased freely without reducing
-quality, though at some point there will be diminishing returns (>8
-times the minimum chunk size).
-
-It has been observed that RepMaxCDC provides a rate of deduplication
-that is indistinguishable from MaxCDC, but only under the condition that
-MaxCDC's chunk size ratio is chosen optimally. An advantage of RepMaxCDC
-over MaxCDC is therefore that less tuning is required.
-
-Furthermore, for a given input it is also trivial to check whether it is
-already chunked, purely looking at its size. This is a property that
-both FastCDC and MaxCDC lack. This makes it practical to integrate
-RepMaxCDC into existing Content Addressable Storage systems that were
-originally not designed with chunking in mind. Existing storage APIs for
-uploading and downloading objects can unambiguously determine whether
-requests pertain to an individual chunk, or a file consisting of
-multiple chunks.
-
-[The simple implementation of RepMaxCDC](/simple_rep_max_content_defined_chunker.go)
-isn't a lot more complex than MaxCDC's. However, it tends to perform
-poorly due to repeated hashing of the input.
-[The optimized implementation of RepMaxCDC](/rep_max_content_defined_chunker.go)
-addresses this, and provides the same throughput as FastCDC and MaxCDC.
-
-The optimized implementation works by keeping track of all points in the
-input data at which the hash value exceeds previously observed values.
-This results in a staircase. Whenever it notices that the distance since
-the start of the last step becomes too long (i.e., reaching the minimum
-chunk size), it knows it can select definitive cutting points up to the
-start of that step. The staircase may then be discarded.
-
-## Chunk size distribution
-
-Below are some graphs showing the chunk size distribution of the
-algorithms discussed above.
-
-### FastCDC
-
-![Chunk size distribution for FastCDC](/images/cumulative-sizes-fastcdc.png)
-
-FastCDC uses different thresholds for determining where to make cuts,
-depending on whether the expected chunk size of 8 KB is reached. It is
-important to note that the expected chunk size is not the average, nor
-the median.
-
-You can see that FastCDC effectively tries to emulate a normal
-distribution by stitching two geometric distributions together.
-
-### MaxCDC
-
-![Chunk size distribution for MaxCDC](/images/cumulative-sizes-maxcdc.png)
-
-With MaxCDC, the size distribution of chunks before deduplication is
-uniform. As smaller objects have a higher probability of getting
-deduplicated, you see that after deduplication larger objects occur
-somewhat more frequently.
-
-### RepMaxCDC
-
-![Chunk size distribution for RepMaxCDC](/images/cumulative-sizes-repmaxcdc.png)
-
-With RepMaxCDC, the size distribution of chunks is clearly not uniform.
-Namely, the algorithm prefers creating chunks closer to the minimum
-chunk size. This can be explained by the fact that any chunks created by
-MaxCDC that are only slightly larger than twice the minimum chunk size,
-will continue to be broken up further into two small chunks by
-RepMaxCDC.
-
-If one were to think of a file as being the side of a long street, the
-minimum chunk size to be equal to the length of a car, and the start of
-each chunk being a position at which a car is parked, then this problem
-is analogous to Rényi's parking problem (1958). The expected density is
-known as Rényi's parking constant, which is approximately 0.7475979203.
-This seems to match our observations, where the mean chunk size (prior
-to deduplication) is the minimum size, multiplied by
-$1/0.74759\ldots = 1.3376\dots$.
-
-## Future work
-
-The MaxCDC and RepMaxCDC algorithms have at this point been stablized,
-and their behavior will no longer be altered. However, this doesn't mean
-we can't add improved algorithms to this repository later on. Here are
-some topics we should try to explore:
-
-- The MaxCDC and RepMaxCDC algorithms hash data using `h=(h<<1)+gear[b]`.
-  This was done to be able to make comparisons with FastCDC fair.
-  However, the Linux kernel tarball tests show that
-  `h=(h>>1)+(gear[b]>>1)` yields better results, as it better tolerates
-  changes close to chunk boundaries. Should future versions of the
-  algorithm use that function instead?
-
-- Maybe a high-quality rolling hash function should always evaluate to
-  zero when all bytes in the window are equal to each other. That way
-  cutting points are only considered in such positions if all bytes in
-  the chunk have the same value.
-
-- Is it possible to make SIMD aware implementations of the MaxCDC and
-  RepMaxCDC algorithms? If not, how can the algorithms be modified to
-  accommodate this?
-
-- There exist CDC algorithms that don't depend on hashing at all, such
-  as Asymmetric Extremum (AE). Could the scheme introduced by MaxCDC and
-  RepMaxCDC be adjusted to work with such algorithms as well?
+```bibtex
+@misc{repmaxcdc,
+      title = {Content-Defined Chunking with tight chunk size bounds},
+      author = {Ed Schouten},
+      year = {2026},
+      month = aug,
+      url = {https://github.com/buildbarn/go-cdc/blob/main/papers/cdc.pdf},
+}
+```
