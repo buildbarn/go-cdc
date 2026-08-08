@@ -18,8 +18,13 @@ func main() {
 		log.Fatal("Failed to open input file: ", err)
 	}
 
-	r := cdc.NewMaxContentDefinedChunker(bufio.NewReaderSize(f, 16*1024*1024), &cdc.FastContentDefinedChunkerGearTable, 2*1024, 16*1024)
-	// r := cdc.NewFastContentDefinedChunker(bufio.NewReader(f, &cdc.FastContentDefinedChunkerGearTable, 16*1024*1024))
+	c := cdc.NewMaxContentDefinedChunker(
+		&cdc.FastContentDefinedChunkerGearTable,
+		/* minSizeBytes = */ 2*1024,
+		/* maxSizeBytes = */ 16*1024,
+	)
+	// c := cdc.NewFastContentDefinedChunker(&cdc.FastContentDefinedChunkerGearTable, 16*1024*1024))
+	r := c.NewChunkReader(bufio.NewReaderSize(f, 16*1024*1024))
 
 	chunkCount := 0
 	for {

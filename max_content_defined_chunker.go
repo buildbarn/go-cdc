@@ -4,18 +4,10 @@ import (
 	"io"
 )
 
-type chunk struct {
-	hash uint64
-	end  int
-}
-
 type maxContentDefinedChunker struct {
-	r             Peeker
 	gearTable     *GearTable
 	minSizeBytes  int
 	peekSizeBytes int
-
-	chunks []chunk
 }
 
 // NewMaxContentDefinedChunker returns a content defined chunker that
@@ -35,21 +27,39 @@ type maxContentDefinedChunker struct {
 // smaller. Furthermore, it is expected that this distribution also
 // causes the sequence of chunks to converge more quickly after parts
 // that differ between files have finished processing.
-func NewMaxContentDefinedChunker(r Peeker, gearTable *GearTable, minSizeBytes, maxSizeBytes int) ContentDefinedChunker {
+func NewMaxContentDefinedChunker(gearTable *GearTable, minSizeBytes, maxSizeBytes int) ContentDefinedChunker {
 	return &maxContentDefinedChunker{
-		r:             r,
 		gearTable:     gearTable,
 		minSizeBytes:  minSizeBytes,
 		peekSizeBytes: minSizeBytes + maxSizeBytes,
-		chunks:        make([]chunk, 1, maxSizeBytes/minSizeBytes+2),
 	}
 }
 
-func (c *maxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
+func (c *maxContentDefinedChunker) NewChunkReader(peeker Peeker) ChunkReader {
+	return &maxChunkReader{
+		contentDefinedChunker: c,
+		peeker:                peeker,
+		chunks:                make([]chunk, 1, c.peekSizeBytes/c.minSizeBytes+1),
+	}
+}
+
+type chunk struct {
+	hash uint64
+	end  int
+}
+
+type maxChunkReader struct {
+	contentDefinedChunker *maxContentDefinedChunker
+	peeker                Peeker
+
+	chunks []chunk
+}
+
+func (r *maxChunkReader) ReadNextChunk() ([]byte, error) {
 	// Discard data that was handed out by the previous call.
-	discardedSizeBytes, err := c.r.Discard(c.chunks[0].end)
-	for i := range c.chunks {
-		c.chunks[i].end -= discardedSizeBytes
+	discardedSizeBytes, err := r.peeker.Discard(r.chunks[0].end)
+	for i := range r.chunks {
+		r.chunks[i].end -= discardedSizeBytes
 	}
 	if err != nil {
 		return nil, err
@@ -60,7 +70,8 @@ func (c *maxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 	// data or leave at least minSizeBytes behind. This ensures that
 	// all chunks of the file are at least minSizeBytes in size,
 	// assuming the file is as well.
-	d, err := c.r.Peek(c.peekSizeBytes)
+	c := r.contentDefinedChunker
+	d, err := r.peeker.Peek(c.peekSizeBytes)
 	if err != nil && err != io.EOF {
 		return nil, err
 	}
@@ -68,7 +79,7 @@ func (c *maxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 		if len(d) == 0 {
 			return nil, io.EOF
 		}
-		c.chunks = append(c.chunks[:0], chunk{end: len(d)})
+		r.chunks = append(r.chunks[:0], chunk{end: len(d)})
 		return d, nil
 	}
 	d = d[:len(d)-c.minSizeBytes]
@@ -81,9 +92,9 @@ func (c *maxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 	gear := &c.gearTable.values
 	var previousChunk, currentChunk chunk
 	var oldChunks []chunk
-	if len(c.chunks) > 2 {
-		previousChunk, currentChunk = c.chunks[len(c.chunks)-2], c.chunks[len(c.chunks)-1]
-		oldChunks = append(c.chunks[:0], c.chunks[1:len(c.chunks)-2]...)
+	if len(r.chunks) > 2 {
+		previousChunk, currentChunk = r.chunks[len(r.chunks)-2], r.chunks[len(r.chunks)-1]
+		oldChunks = append(r.chunks[:0], r.chunks[1:len(r.chunks)-2]...)
 	} else {
 		// This is the very first chunk, or the previous chunk
 		// was larger than maxSizeBytes-minSizeBytes. We know
@@ -94,7 +105,7 @@ func (c *maxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 		}
 		previousChunk.end = c.minSizeBytes
 		currentChunk = previousChunk
-		oldChunks = c.chunks[:0]
+		oldChunks = r.chunks[:0]
 	}
 
 	for {
@@ -113,8 +124,8 @@ func (c *maxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 			}
 
 			// Processed maxSizeBytes. Return the first chunk.
-			c.chunks = append(oldChunks, previousChunk, currentChunk)
-			return d[:c.chunks[0].end], nil
+			r.chunks = append(oldChunks, previousChunk, currentChunk)
+			return d[:r.chunks[0].end], nil
 		}
 
 		for i, b := range hashRegion {

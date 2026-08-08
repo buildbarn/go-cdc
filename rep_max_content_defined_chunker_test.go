@@ -21,35 +21,40 @@ func TestRepMaxContentDefinedChunker(t *testing.T) {
 
 	for horizonSizeBytes := 0; horizonSizeBytes <= 16*1024; horizonSizeBytes += 2 * 1024 {
 		t.Run(fmt.Sprintf("Horizon=%d", horizonSizeBytes), func(t *testing.T) {
+			chunker1 := cdc.NewSimpleRepMaxContentDefinedChunker(
+				&cdc.FastContentDefinedChunkerGearTable,
+				/* minSizeBytes = */ 2*1024,
+				horizonSizeBytes,
+			)
+			chunker2 := cdc.NewRepMaxContentDefinedChunker(
+				&cdc.FastContentDefinedChunkerGearTable,
+				/* minSizeBytes = */ 2*1024,
+				horizonSizeBytes,
+			)
+
 			for i := 0; i < 100; i++ {
-				chunker1 := cdc.NewSimpleRepMaxContentDefinedChunker(
+				chunkReader1 := chunker1.NewChunkReader(
 					bufio.NewReaderSize(io.LimitReader(r1, 1024*1024), 64*1024),
-					&cdc.FastContentDefinedChunkerGearTable,
-					/* minSizeBytes = */ 2*1024,
-					horizonSizeBytes,
 				)
-				chunker2 := cdc.NewRepMaxContentDefinedChunker(
+				chunkReader2 := chunker2.NewChunkReader(
 					bufio.NewReaderSize(io.LimitReader(r2, 1024*1024), 64*1024),
-					&cdc.FastContentDefinedChunkerGearTable,
-					/* minSizeBytes = */ 2*1024,
-					horizonSizeBytes,
 				)
 
 				for totalRead := 0; totalRead < 1024*1024; {
-					chunk1, err1 := chunker1.ReadNextChunk()
+					chunk1, err1 := chunkReader1.ReadNextChunk()
 					require.NoError(t, err1)
 					require.LessOrEqual(t, 2*1024, len(chunk1))
 					require.Greater(t, 4*1024, len(chunk1))
 
-					chunk2, err2 := chunker2.ReadNextChunk()
+					chunk2, err2 := chunkReader2.ReadNextChunk()
 					require.NoError(t, err2)
 					require.Equal(t, chunk1, chunk2)
 					totalRead += len(chunk1)
 				}
 
-				_, err1 := chunker1.ReadNextChunk()
+				_, err1 := chunkReader1.ReadNextChunk()
 				require.Equal(t, io.EOF, err1)
-				_, err2 := chunker2.ReadNextChunk()
+				_, err2 := chunkReader2.ReadNextChunk()
 				require.Equal(t, io.EOF, err2)
 			}
 		})
@@ -64,33 +69,38 @@ func FuzzRepMaxContentDefinedChunker(f *testing.F) {
 
 		gearTable := cdc.NewSeededGearTable(gearSeed)
 		chunker1 := cdc.NewSimpleRepMaxContentDefinedChunker(
-			bufio.NewReader(bytes.NewBuffer(data)),
 			gearTable,
 			minSizeBytes,
 			horizonSizeBytes,
 		)
 		chunker2 := cdc.NewRepMaxContentDefinedChunker(
-			bufio.NewReader(bytes.NewBuffer(data)),
 			gearTable,
 			minSizeBytes,
 			horizonSizeBytes,
 		)
 
+		chunkReader1 := chunker1.NewChunkReader(
+			bufio.NewReader(bytes.NewBuffer(data)),
+		)
+		chunkReader2 := chunker2.NewChunkReader(
+			bufio.NewReader(bytes.NewBuffer(data)),
+		)
+
 		for totalRead := 0; totalRead < len(data); {
-			chunk1, err1 := chunker1.ReadNextChunk()
+			chunk1, err1 := chunkReader1.ReadNextChunk()
 			require.NoError(t, err1)
 			require.LessOrEqual(t, min(minSizeBytes, len(data)), len(chunk1))
 			require.Greater(t, 2*minSizeBytes, len(chunk1))
 
-			chunk2, err2 := chunker2.ReadNextChunk()
+			chunk2, err2 := chunkReader2.ReadNextChunk()
 			require.NoError(t, err2)
 			require.Equal(t, chunk1, chunk2)
 			totalRead += len(chunk1)
 		}
 
-		_, err1 := chunker1.ReadNextChunk()
+		_, err1 := chunkReader1.ReadNextChunk()
 		require.Equal(t, io.EOF, err1)
-		_, err2 := chunker2.ReadNextChunk()
+		_, err2 := chunkReader2.ReadNextChunk()
 		require.Equal(t, io.EOF, err2)
 	})
 }
@@ -105,6 +115,11 @@ func BenchmarkRepMaxContentDefinedChunker(b *testing.B) {
 		peekSizeBytes    = 2*minSizeBytes + horizonSizeBytes
 		sizeBytes        = 64 * 1024 * 1024
 	)
+	chunker := cdc.NewRepMaxContentDefinedChunker(
+		&cdc.FastContentDefinedChunkerGearTable,
+		minSizeBytes,
+		horizonSizeBytes,
+	)
 
 	data := make([]byte, sizeBytes)
 	rand.New(rand.NewSource(1)).Read(data)
@@ -115,14 +130,9 @@ func BenchmarkRepMaxContentDefinedChunker(b *testing.B) {
 	for b.Loop() {
 		reader.Reset(data)
 		bufferedReader.Reset(reader)
-		chunker := cdc.NewRepMaxContentDefinedChunker(
-			bufferedReader,
-			&cdc.FastContentDefinedChunkerGearTable,
-			minSizeBytes,
-			horizonSizeBytes,
-		)
+		chunkReader := chunker.NewChunkReader(bufferedReader)
 		for {
-			if _, err := chunker.ReadNextChunk(); err != nil {
+			if _, err := chunkReader.ReadNextChunk(); err != nil {
 				if err == io.EOF {
 					break
 				}

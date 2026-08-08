@@ -30,13 +30,14 @@ func main() {
 					log.Fatalf("Failed to open %#v: %s", filename, err)
 				}
 				br := bufio.NewReaderSize(f, 16*1024*1024)
-				var r cdc.ContentDefinedChunker
+				var c cdc.ContentDefinedChunker
 				if useFastCDC {
-					r = cdc.NewFastContentDefinedChunker(br, &cdc.FastContentDefinedChunkerGearTable, 512<<size)
+					c = cdc.NewFastContentDefinedChunker(&cdc.FastContentDefinedChunkerGearTable, 512<<size)
 				} else {
 					minSizeBytes := int(math.Round(512 * 0.74759 * math.Pow(2, float64(size)/16)))
-					r = cdc.NewRepMaxContentDefinedChunker(br, &cdc.FastContentDefinedChunkerGearTable, minSizeBytes, minSizeBytes*8)
+					c = cdc.NewRepMaxContentDefinedChunker(&cdc.FastContentDefinedChunkerGearTable, minSizeBytes, minSizeBytes*8)
 				}
+				r := c.NewChunkReader(br)
 				for {
 					chunk, err := r.ReadNextChunk()
 					if err != nil {

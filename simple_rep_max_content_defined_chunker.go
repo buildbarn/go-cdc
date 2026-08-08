@@ -5,12 +5,9 @@ import (
 )
 
 type simpleRepMaxContentDefinedChunker struct {
-	r             Peeker
 	gearTable     *GearTable
 	minSizeBytes  int
 	peekSizeBytes int
-
-	previousChunkSizeBytes int
 }
 
 // NewSimpleRepMaxContentDefinedChunker returns a content defined
@@ -18,19 +15,32 @@ type simpleRepMaxContentDefinedChunker struct {
 // NewRepMaxContentDefinedChunker. However, this implementation is
 // simpler and less efficient. It is merely provided for testing
 // purposes.
-func NewSimpleRepMaxContentDefinedChunker(r Peeker, gearTable *GearTable, minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
+func NewSimpleRepMaxContentDefinedChunker(gearTable *GearTable, minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
 	return &simpleRepMaxContentDefinedChunker{
-		r:             r,
 		gearTable:     gearTable,
 		minSizeBytes:  minSizeBytes,
 		peekSizeBytes: 2*minSizeBytes + horizonSizeBytes,
 	}
 }
 
-func (c *simpleRepMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
+func (c *simpleRepMaxContentDefinedChunker) NewChunkReader(peeker Peeker) ChunkReader {
+	return &simpleRepMaxChunkReader{
+		contentDefinedChunker: c,
+		peeker:                peeker,
+	}
+}
+
+type simpleRepMaxChunkReader struct {
+	contentDefinedChunker *simpleRepMaxContentDefinedChunker
+	peeker                Peeker
+
+	previousChunkSizeBytes int
+}
+
+func (r *simpleRepMaxChunkReader) ReadNextChunk() ([]byte, error) {
 	// Discard data that was handed out by the previous call.
-	discardedSizeBytes, err := c.r.Discard(c.previousChunkSizeBytes)
-	c.previousChunkSizeBytes -= discardedSizeBytes
+	discardedSizeBytes, err := r.peeker.Discard(r.previousChunkSizeBytes)
+	r.previousChunkSizeBytes -= discardedSizeBytes
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +50,8 @@ func (c *simpleRepMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 	// data or leave at least minSizeBytes behind. This ensures that
 	// all chunks of the file are at least minSizeBytes in size,
 	// assuming the file is as well.
-	d, err := c.r.Peek(c.peekSizeBytes)
+	c := r.contentDefinedChunker
+	d, err := r.peeker.Peek(c.peekSizeBytes)
 	if err != nil && err != io.EOF {
 		return nil, err
 	}
@@ -48,7 +59,7 @@ func (c *simpleRepMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 		if len(d) == 0 {
 			return nil, io.EOF
 		}
-		c.previousChunkSizeBytes = len(d)
+		r.previousChunkSizeBytes = len(d)
 		return d, nil
 	}
 	d = d[:len(d)-c.minSizeBytes]
@@ -76,7 +87,7 @@ func (c *simpleRepMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 		}
 		if bestCutOffsetBytes < c.minSizeBytes {
 			bestChunkSizeBytes := c.minSizeBytes + bestCutOffsetBytes
-			c.previousChunkSizeBytes = bestChunkSizeBytes
+			r.previousChunkSizeBytes = bestChunkSizeBytes
 			return d[:bestChunkSizeBytes], nil
 		}
 

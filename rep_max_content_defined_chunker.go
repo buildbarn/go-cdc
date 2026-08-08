@@ -6,10 +6,58 @@ import (
 )
 
 type repMaxContentDefinedChunker struct {
-	r             Peeker
 	gearTable     *GearTable
 	minSizeBytes  int
 	peekSizeBytes int
+}
+
+// NewRepMaxContentDefinedChunker returns a content defined chunker that
+// expands upon MaxCDC, in that it repeatedly applies the chunking
+// process until chunks are [minSizeBytes, 2*minSizeBytes) in size.
+//
+// Like MaxCDC, this algorithm takes a parameter that controls the
+// amount of data that is read ahead. While MaxCDC uses it to control
+// the maximum chunk size, in this algorithm it only denotes the quality
+// of the chunking that is performed (i.e., the horizon size). Setting
+// it to zero leads to uniform chunking of minSizeBytes, while setting
+// it to a positive value n means that an optimal point within offsets
+// [minSizeBytes, minSizeBytes+n] will always be respected.
+//
+// While MaxCDC performs poorly if the ratio between the maximum and
+// minimum chunk size becomes too large, the horizon size can be
+// increased freely without reducing quality. However, there will be
+// diminishing returns.
+//
+// It has been observed that this algorithm provides an almost identical
+// rate of deduplication as MaxCDC. The advantage of this algorithm over
+// MaxCDC is that for a given input it is trivial to check whether it is
+// already chunked, purely looking at its size.
+func NewRepMaxContentDefinedChunker(gearTable *GearTable, minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
+	return &repMaxContentDefinedChunker{
+		gearTable:     gearTable,
+		minSizeBytes:  minSizeBytes,
+		peekSizeBytes: 2*minSizeBytes + horizonSizeBytes,
+	}
+}
+
+func (c *repMaxContentDefinedChunker) NewChunkReader(peeker Peeker) ChunkReader {
+	return &repMaxChunkReader{
+		contentDefinedChunker: c,
+		peeker:                peeker,
+		completeChunks:        make([]int, 0, c.peekSizeBytes/c.minSizeBytes),
+		// Even though this list can grow to become proportional
+		// to the size of the horizon, this is highly unlikely.
+		// As we progress, it becomes increasingly harder to
+		// find even more preferable cutting points within the
+		// minimum chunk size. Allocating space for 32 cutting
+		// points covers virtually all inputs.
+		incompleteChunks: make([]int, 0, 32),
+	}
+}
+
+type repMaxChunkReader struct {
+	contentDefinedChunker *repMaxContentDefinedChunker
+	peeker                Peeker
 
 	// The size of the previous chunk returned by ReadNextChunk().
 	// This amount of data will be discarded from the input stream
@@ -42,49 +90,10 @@ type repMaxContentDefinedChunker struct {
 	bestHash uint64
 }
 
-// NewRepMaxContentDefinedChunker returns a content defined chunker that
-// expands upon MaxCDC, in that it repeatedly applies the chunking
-// process until chunks are [minSizeBytes, 2*minSizeBytes) in size.
-//
-// Like MaxCDC, this algorithm takes a parameter that controls the
-// amount of data that is read ahead. While MaxCDC uses it to control
-// the maximum chunk size, in this algorithm it only denotes the quality
-// of the chunking that is performed (i.e., the horizon size). Setting
-// it to zero leads to uniform chunking of minSizeBytes, while setting
-// it to a positive value n means that an optimal point within offsets
-// [minSizeBytes, minSizeBytes+n] will always be respected.
-//
-// While MaxCDC performs poorly if the ratio between the maximum and
-// minimum chunk size becomes too large, the horizon size can be
-// increased freely without reducing quality. However, there will be
-// diminishing returns.
-//
-// It has been observed that this algorithm provides an almost identical
-// rate of deduplication as MaxCDC. The advantage of this algorithm over
-// MaxCDC is that for a given input it is trivial to check whether it is
-// already chunked, purely looking at its size.
-func NewRepMaxContentDefinedChunker(r Peeker, gearTable *GearTable, minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
-	return &repMaxContentDefinedChunker{
-		r:             r,
-		gearTable:     gearTable,
-		minSizeBytes:  minSizeBytes,
-		peekSizeBytes: 2*minSizeBytes + horizonSizeBytes,
-
-		completeChunks: make([]int, 0, horizonSizeBytes/minSizeBytes+1),
-		// Even though this list can grow to become proportional
-		// to the size of the horizon, this is highly unlikely.
-		// As we progress, it becomes increasingly harder to
-		// find even more preferable cutting points within the
-		// minimum chunk size. Allocating space for 32 cutting
-		// points covers virtually all inputs.
-		incompleteChunks: make([]int, 0, 32),
-	}
-}
-
-func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
+func (r *repMaxChunkReader) ReadNextChunk() ([]byte, error) {
 	// Discard data that was handed out by the previous call.
-	discardedSizeBytes, err := c.r.Discard(c.previousChunkSizeBytes)
-	c.previousChunkSizeBytes -= discardedSizeBytes
+	discardedSizeBytes, err := r.peeker.Discard(r.previousChunkSizeBytes)
+	r.previousChunkSizeBytes -= discardedSizeBytes
 	if err != nil {
 		return nil, err
 	}
@@ -94,15 +103,15 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 	// us to discard data as aggressively as possible. This reduces
 	// the amount of data that needs to be retained (copied) when
 	// the read buffer is refilled.
-	completeChunks := c.completeChunks
+	completeChunks := r.completeChunks
 	if len(completeChunks) > 0 {
 		firstChunk := completeChunks[len(completeChunks)-1]
-		d, err := c.r.Peek(firstChunk)
+		d, err := r.peeker.Peek(firstChunk)
 		if err != nil {
 			return nil, err
 		}
-		c.previousChunkSizeBytes = firstChunk
-		c.completeChunks = completeChunks[:len(completeChunks)-1]
+		r.previousChunkSizeBytes = firstChunk
+		r.completeChunks = completeChunks[:len(completeChunks)-1]
 		return d, nil
 	}
 
@@ -111,7 +120,8 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 	// data or leave at least minSizeBytes behind. This ensures that
 	// all chunks of the file are at least minSizeBytes in size,
 	// assuming the file is as well.
-	d, err := c.r.Peek(c.peekSizeBytes)
+	c := r.contentDefinedChunker
+	d, err := r.peeker.Peek(c.peekSizeBytes)
 	if err != nil && err != io.EOF {
 		return nil, err
 	}
@@ -119,7 +129,7 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 		if len(d) == 0 {
 			return nil, io.EOF
 		}
-		c.previousChunkSizeBytes = len(d)
+		r.previousChunkSizeBytes = len(d)
 		return d, nil
 	}
 	d = d[:len(d)-c.minSizeBytes]
@@ -131,15 +141,15 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 	var currentChunk int
 	var currentHash uint64
 	var bestHash uint64
-	if len(c.incompleteChunks) >= 2 {
-		oldChunks = c.incompleteChunks[:len(c.incompleteChunks)-1]
-		currentChunk = c.incompleteChunks[len(c.incompleteChunks)-1]
-		currentHash = c.currentHash
-		bestHash = c.bestHash
+	if len(r.incompleteChunks) >= 2 {
+		oldChunks = r.incompleteChunks[:len(r.incompleteChunks)-1]
+		currentChunk = r.incompleteChunks[len(r.incompleteChunks)-1]
+		currentHash = r.currentHash
+		bestHash = r.bestHash
 	} else {
 		// This is the very first chunk. We know that the first
 		// minSizeBytes positions can't contain a cut. Skip them.
-		oldChunks = append(c.incompleteChunks[:0], 0)
+		oldChunks = append(r.incompleteChunks[:0], 0)
 		for _, b := range d[c.minSizeBytes-gearHashWindowSizeBytes : c.minSizeBytes] {
 			currentHash = (currentHash << 1) + gear[b]
 		}
@@ -357,10 +367,10 @@ func (c *repMaxContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 			}
 		}
 	}
-	c.previousChunkSizeBytes = firstChunk
-	c.completeChunks = completeChunks
-	c.incompleteChunks = incompleteChunks
-	c.currentHash = currentHash
-	c.bestHash = bestHash
+	r.previousChunkSizeBytes = firstChunk
+	r.completeChunks = completeChunks
+	r.incompleteChunks = incompleteChunks
+	r.currentHash = currentHash
+	r.bestHash = bestHash
 	return d[:firstChunk], nil
 }

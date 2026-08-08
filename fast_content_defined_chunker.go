@@ -5,24 +5,20 @@ import (
 )
 
 type fastContentDefinedChunker struct {
-	r               Peeker
 	gearTable       *GearTable
 	minSizeBytes    int
 	normalSizeBytes int
 	maxSizeBytes    int
 	maskS           uint64
 	maskL           uint64
-
-	previousChunkSizeBytes int
 }
 
 // NewFastContentDefinedChunker returns a content defined chunker that
 // uses the FastCDC8KB algorithm as described in the paper "The Design
 // of Fast Content-Defined Chunking for Data Deduplication Based Storage
 // Systems".
-func NewFastContentDefinedChunker(r Peeker, gearTable *GearTable, normalSizeBytes int) ContentDefinedChunker {
+func NewFastContentDefinedChunker(gearTable *GearTable, normalSizeBytes int) ContentDefinedChunker {
 	return &fastContentDefinedChunker{
-		r:               r,
 		gearTable:       gearTable,
 		minSizeBytes:    normalSizeBytes / 4,
 		normalSizeBytes: normalSizeBytes,
@@ -50,16 +46,31 @@ func NewFastContentDefinedChunker(r Peeker, gearTable *GearTable, normalSizeByte
 	}
 }
 
-func (c *fastContentDefinedChunker) ReadNextChunk() ([]byte, error) {
+func (c *fastContentDefinedChunker) NewChunkReader(peeker Peeker) ChunkReader {
+	return &fastChunkReader{
+		contentDefinedChunker: c,
+		peeker:                peeker,
+	}
+}
+
+type fastChunkReader struct {
+	contentDefinedChunker *fastContentDefinedChunker
+	peeker                Peeker
+
+	previousChunkSizeBytes int
+}
+
+func (r *fastChunkReader) ReadNextChunk() ([]byte, error) {
 	// Discard data that was handed out by the previous call.
-	discardedSizeBytes, err := c.r.Discard(c.previousChunkSizeBytes)
-	c.previousChunkSizeBytes -= discardedSizeBytes
+	discardedSizeBytes, err := r.peeker.Discard(r.previousChunkSizeBytes)
+	r.previousChunkSizeBytes -= discardedSizeBytes
 	if err != nil {
 		return nil, err
 	}
 
 	// Gain access to the data corresponding to the next chunk(s).
-	d, err := c.r.Peek(c.maxSizeBytes)
+	c := r.contentDefinedChunker
+	d, err := r.peeker.Peek(c.maxSizeBytes)
 	if err != nil && err != io.EOF {
 		return nil, err
 	}
@@ -75,58 +86,58 @@ func (c *fastContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 			s := gear[b[0]]
 			h := (hash << 1) + s
 			if h&c.maskS == 0 {
-				c.previousChunkSizeBytes = c.minSizeBytes + i + 1
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.minSizeBytes + i + 1
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[1]]
 			h = (hash << 2) + s
 			if h&c.maskS == 0 {
-				c.previousChunkSizeBytes = c.minSizeBytes + i + 2
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.minSizeBytes + i + 2
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[2]]
 			h = (hash << 3) + s
 			if h&c.maskS == 0 {
-				c.previousChunkSizeBytes = c.minSizeBytes + i + 3
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.minSizeBytes + i + 3
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[3]]
 			h = (hash << 4) + s
 			if h&c.maskS == 0 {
-				c.previousChunkSizeBytes = c.minSizeBytes + i + 4
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.minSizeBytes + i + 4
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[4]]
 			h = (hash << 5) + s
 			if h&c.maskS == 0 {
-				c.previousChunkSizeBytes = c.minSizeBytes + i + 5
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.minSizeBytes + i + 5
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[5]]
 			h = (hash << 6) + s
 			if h&c.maskS == 0 {
-				c.previousChunkSizeBytes = c.minSizeBytes + i + 6
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.minSizeBytes + i + 6
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[6]]
 			h = (hash << 7) + s
 			if h&c.maskS == 0 {
-				c.previousChunkSizeBytes = c.minSizeBytes + i + 7
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.minSizeBytes + i + 7
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[7]]
 			h = (hash << 8) + s
 			if h&c.maskS == 0 {
-				c.previousChunkSizeBytes = c.minSizeBytes + i + 8
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.minSizeBytes + i + 8
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			hash = h
 		}
 		for ; i < len(hashRegion); i++ {
 			hash = (hash << 1) + gear[hashRegion[i]]
 			if hash&c.maskS == 0 {
-				c.previousChunkSizeBytes = c.minSizeBytes + i
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.minSizeBytes + i
+				return d[:r.previousChunkSizeBytes], nil
 			}
 		}
 
@@ -137,58 +148,58 @@ func (c *fastContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 			s := gear[b[0]]
 			h := (hash << 1) + s
 			if h&c.maskL == 0 {
-				c.previousChunkSizeBytes = c.normalSizeBytes + i + 1
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.normalSizeBytes + i + 1
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[1]]
 			h = (hash << 2) + s
 			if h&c.maskL == 0 {
-				c.previousChunkSizeBytes = c.normalSizeBytes + i + 2
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.normalSizeBytes + i + 2
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[2]]
 			h = (hash << 3) + s
 			if h&c.maskL == 0 {
-				c.previousChunkSizeBytes = c.normalSizeBytes + i + 3
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.normalSizeBytes + i + 3
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[3]]
 			h = (hash << 4) + s
 			if h&c.maskL == 0 {
-				c.previousChunkSizeBytes = c.normalSizeBytes + i + 4
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.normalSizeBytes + i + 4
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[4]]
 			h = (hash << 5) + s
 			if h&c.maskL == 0 {
-				c.previousChunkSizeBytes = c.normalSizeBytes + i + 5
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.normalSizeBytes + i + 5
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[5]]
 			h = (hash << 6) + s
 			if h&c.maskL == 0 {
-				c.previousChunkSizeBytes = c.normalSizeBytes + i + 6
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.normalSizeBytes + i + 6
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[6]]
 			h = (hash << 7) + s
 			if h&c.maskL == 0 {
-				c.previousChunkSizeBytes = c.normalSizeBytes + i + 7
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.normalSizeBytes + i + 7
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[7]]
 			h = (hash << 8) + s
 			if h&c.maskL == 0 {
-				c.previousChunkSizeBytes = c.normalSizeBytes + i + 8
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.normalSizeBytes + i + 8
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			hash = h
 		}
 		for ; i < len(hashRegion); i++ {
 			hash = (hash << 1) + gear[hashRegion[i]]
 			if hash&c.maskL == 0 {
-				c.previousChunkSizeBytes = c.normalSizeBytes + i
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.normalSizeBytes + i
+				return d[:r.previousChunkSizeBytes], nil
 			}
 		}
 	} else if len(d) >= c.minSizeBytes {
@@ -201,64 +212,64 @@ func (c *fastContentDefinedChunker) ReadNextChunk() ([]byte, error) {
 			s := gear[b[0]]
 			h := (hash << 1) + s
 			if h&c.maskS == 0 {
-				c.previousChunkSizeBytes = c.minSizeBytes + i + 1
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.minSizeBytes + i + 1
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[1]]
 			h = (hash << 2) + s
 			if h&c.maskS == 0 {
-				c.previousChunkSizeBytes = c.minSizeBytes + i + 2
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.minSizeBytes + i + 2
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[2]]
 			h = (hash << 3) + s
 			if h&c.maskS == 0 {
-				c.previousChunkSizeBytes = c.minSizeBytes + i + 3
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.minSizeBytes + i + 3
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[3]]
 			h = (hash << 4) + s
 			if h&c.maskS == 0 {
-				c.previousChunkSizeBytes = c.minSizeBytes + i + 4
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.minSizeBytes + i + 4
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[4]]
 			h = (hash << 5) + s
 			if h&c.maskS == 0 {
-				c.previousChunkSizeBytes = c.minSizeBytes + i + 5
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.minSizeBytes + i + 5
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[5]]
 			h = (hash << 6) + s
 			if h&c.maskS == 0 {
-				c.previousChunkSizeBytes = c.minSizeBytes + i + 6
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.minSizeBytes + i + 6
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[6]]
 			h = (hash << 7) + s
 			if h&c.maskS == 0 {
-				c.previousChunkSizeBytes = c.minSizeBytes + i + 7
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.minSizeBytes + i + 7
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			s = (s << 1) + gear[b[7]]
 			h = (hash << 8) + s
 			if h&c.maskS == 0 {
-				c.previousChunkSizeBytes = c.minSizeBytes + i + 8
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.minSizeBytes + i + 8
+				return d[:r.previousChunkSizeBytes], nil
 			}
 			hash = h
 		}
 		for ; i < len(hashRegion); i++ {
 			hash = (hash << 1) + gear[hashRegion[i]]
 			if hash&c.maskS == 0 {
-				c.previousChunkSizeBytes = c.minSizeBytes + i
-				return d[:c.previousChunkSizeBytes], nil
+				r.previousChunkSizeBytes = c.minSizeBytes + i
+				return d[:r.previousChunkSizeBytes], nil
 			}
 		}
 	} else if len(d) == 0 {
 		return nil, io.EOF
 	}
 
-	c.previousChunkSizeBytes = len(d)
+	r.previousChunkSizeBytes = len(d)
 	return d, nil
 }
