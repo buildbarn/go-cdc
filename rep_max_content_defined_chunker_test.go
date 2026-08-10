@@ -160,28 +160,45 @@ func TestRepMaxContentDefinedChunkerDiscardUpToGuaranteedChunk(t *testing.T) {
 		/* horizonSizeBytes = */ 16*1024,
 	)
 
-	for i := 0; i < 10000; i++ {
-		// Create a random stream of data and discard a random
-		// amount of data from the start. Progress the stream to
-		// the next point that can no longer be influenced by
-		// any data before it.
-		seed := rand.Int63()
-		peeker := offsetTrackingPeeker{Peeker: bufio.NewReaderSize(rand.New(rand.NewSource(seed)), 64*1024)}
-		_, err := peeker.Discard(rand.Intn(16 * 1024))
-		require.NoError(t, err)
-		require.NoError(t, chunker.DiscardUpToGuaranteedChunk(&peeker))
+	t.Run("Empty", func(t *testing.T) {
+		// For empty files there are no chunks to report.
+		peeker := bufio.NewReader(bytes.NewBuffer(nil))
+		require.Equal(t, io.EOF, chunker.DiscardUpToGuaranteedChunk(peeker))
+	})
 
-		// Ensure that if we were to chunk the same stream of
-		// data, that the selected cutting point also appears.
-		// This is needed to get chunking invariability.
-		chunkReader := chunker.NewChunkReader(
-			bufio.NewReaderSize(rand.New(rand.NewSource(seed)), 64*1024),
-		)
-		for remainingBytes := peeker.offset; remainingBytes > 0; {
-			chunk, err := chunkReader.ReadNextChunk()
+	t.Run("NullBytes", func(t *testing.T) {
+		// If a stream only contains null bytes, there is no way
+		// to select any point that is the guaranteed start of a
+		// chunk. Any point within the stream can still be
+		// influenced by data prepended to the stream.
+		peeker := bufio.NewReader(bytes.NewBuffer(make([]byte, 1024*1024)))
+		require.Equal(t, io.EOF, chunker.DiscardUpToGuaranteedChunk(peeker))
+	})
+
+	t.Run("Random", func(t *testing.T) {
+		for i := 0; i < 10000; i++ {
+			// Create a random stream of data and discard a random
+			// amount of data from the start. Progress the stream to
+			// the next point that can no longer be influenced by
+			// any data before it.
+			seed := rand.Int63()
+			peeker := offsetTrackingPeeker{Peeker: bufio.NewReaderSize(rand.New(rand.NewSource(seed)), 64*1024)}
+			_, err := peeker.Discard(rand.Intn(16 * 1024))
 			require.NoError(t, err)
-			require.GreaterOrEqual(t, remainingBytes, len(chunk))
-			remainingBytes -= len(chunk)
+			require.NoError(t, chunker.DiscardUpToGuaranteedChunk(&peeker))
+
+			// Ensure that if we were to chunk the same stream of
+			// data, that the selected cutting point also appears.
+			// This is needed to get chunking invariability.
+			chunkReader := chunker.NewChunkReader(
+				bufio.NewReaderSize(rand.New(rand.NewSource(seed)), 64*1024),
+			)
+			for remainingBytes := peeker.offset; remainingBytes > 0; {
+				chunk, err := chunkReader.ReadNextChunk()
+				require.NoError(t, err)
+				require.GreaterOrEqual(t, remainingBytes, len(chunk))
+				remainingBytes -= len(chunk)
+			}
 		}
-	}
+	})
 }
