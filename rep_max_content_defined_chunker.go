@@ -134,7 +134,7 @@ CheckPointsAfterCandidate:
 		}
 
 		// End of current region. Transition to the next region
-		// and progress the first byte.
+		// and process the first byte.
 		hash = (hash << 1) + gear[hashRegion[bytesUntilNextRegion]]
 		bestHashPrevious := bestHashCurrent
 		bestHashCurrent, bestHashNext = bestHashNext, hash
