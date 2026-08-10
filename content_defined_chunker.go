@@ -31,6 +31,10 @@ type ContentDefinedChunker interface {
 	// It is not valid to call this method if
 	// SupportsDiscardUpToGuaranteedChunk() returns false.
 	DiscardUpToGuaranteedChunk(peeker Peeker) error
+
+	// Return the maximum number of bytes methods that accept a
+	// Peeker will attempt to peek from the input stream.
+	GetMaximumPeekSizeBytes() int
 }
 
 type nonSynchronizableContentDefinedChunker struct{}

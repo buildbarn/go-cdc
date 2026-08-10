@@ -32,6 +32,10 @@ func (c *simpleRepMaxContentDefinedChunker) NewChunkReader(peeker Peeker) ChunkR
 	}
 }
 
+func (c *simpleRepMaxContentDefinedChunker) GetMaximumPeekSizeBytes() int {
+	return c.peekSizeBytes
+}
+
 type simpleRepMaxChunkReader struct {
 	contentDefinedChunker *simpleRepMaxContentDefinedChunker
 	peeker                Peeker

@@ -172,6 +172,10 @@ CheckPointsAfterCandidate:
 	}
 }
 
+func (c *repMaxContentDefinedChunker) GetMaximumPeekSizeBytes() int {
+	return c.peekSizeBytes
+}
+
 type repMaxChunkReader struct {
 	contentDefinedChunker *repMaxContentDefinedChunker
 	peeker                Peeker
