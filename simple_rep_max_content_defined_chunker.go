@@ -5,6 +5,8 @@ import (
 )
 
 type simpleRepMaxContentDefinedChunker struct {
+	nonSynchronizableContentDefinedChunker
+
 	gearTable     *GearTable
 	minSizeBytes  int
 	peekSizeBytes int

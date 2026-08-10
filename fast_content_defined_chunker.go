@@ -5,6 +5,8 @@ import (
 )
 
 type fastContentDefinedChunker struct {
+	nonSynchronizableContentDefinedChunker
+
 	gearTable       *GearTable
 	minSizeBytes    int
 	normalSizeBytes int

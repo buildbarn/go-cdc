@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRepMaxContentDefinedChunker(t *testing.T) {
+func TestRepMaxContentDefinedChunkerNewChunkReader(t *testing.T) {
 	// Test that RepMaxContentDefinedChunker behaves the same way as
 	// SimpleRepMaxContentDefinedChunker.
 	seed := rand.Int63()
@@ -138,6 +138,50 @@ func BenchmarkRepMaxContentDefinedChunker(b *testing.B) {
 				}
 				b.Fatal(err)
 			}
+		}
+	}
+}
+
+type offsetTrackingPeeker struct {
+	cdc.Peeker
+	offset int
+}
+
+func (p *offsetTrackingPeeker) Discard(n int) (int, error) {
+	discarded, err := p.Peeker.Discard(n)
+	p.offset += discarded
+	return discarded, err
+}
+
+func TestRepMaxContentDefinedChunkerDiscardUpToGuaranteedChunk(t *testing.T) {
+	chunker := cdc.NewRepMaxContentDefinedChunker(
+		&cdc.FastContentDefinedChunkerGearTable,
+		/* minSizeBytes = */ 2*1024,
+		/* horizonSizeBytes = */ 16*1024,
+	)
+
+	for i := 0; i < 10000; i++ {
+		// Create a random stream of data and discard a random
+		// amount of data from the start. Progress the stream to
+		// the next point that can no longer be influenced by
+		// any data before it.
+		seed := rand.Int63()
+		peeker := offsetTrackingPeeker{Peeker: bufio.NewReaderSize(rand.New(rand.NewSource(seed)), 64*1024)}
+		_, err := peeker.Discard(rand.Intn(16 * 1024))
+		require.NoError(t, err)
+		require.NoError(t, chunker.DiscardUpToGuaranteedChunk(&peeker))
+
+		// Ensure that if we were to chunk the same stream of
+		// data, that the selected cutting point also appears.
+		// This is needed to get chunking invariability.
+		chunkReader := chunker.NewChunkReader(
+			bufio.NewReaderSize(rand.New(rand.NewSource(seed)), 64*1024),
+		)
+		for remainingBytes := peeker.offset; remainingBytes > 0; {
+			chunk, err := chunkReader.ReadNextChunk()
+			require.NoError(t, err)
+			require.GreaterOrEqual(t, remainingBytes, len(chunk))
+			remainingBytes -= len(chunk)
 		}
 	}
 }

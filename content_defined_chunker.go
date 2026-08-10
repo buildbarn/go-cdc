@@ -13,4 +13,32 @@ type ContentDefinedChunker interface {
 	// Read the contents of a file, returning its contents as a
 	// sequence of chunks.
 	NewChunkReader(peeker Peeker) ChunkReader
+
+	// If true, this Content-Defined Chunking function supports
+	// calling the DiscardUpToGuaranteedChunk() method.
+	SupportsDiscardUpToGuaranteedChunk() bool
+
+	// Given a stream that has been seeked to an arbitrary position,
+	// progress it to a chunk boundary that is guaranteed to exist
+	// regardless of the contents of the stream prior to the current
+	// position. If no chunk boundary having this guarantee is found
+	// before reaching end-of-file, io.EOF is returned.
+	//
+	// This method can be used to cut large files into roughly
+	// equally sized pieces, allowing chunking to be performed in
+	// parallel using a thread pool.
+	//
+	// It is not valid to call this method if
+	// SupportsDiscardUpToGuaranteedChunk() returns false.
+	DiscardUpToGuaranteedChunk(peeker Peeker) error
+}
+
+type nonSynchronizableContentDefinedChunker struct{}
+
+func (nonSynchronizableContentDefinedChunker) SupportsDiscardUpToGuaranteedChunk() bool {
+	return false
+}
+
+func (nonSynchronizableContentDefinedChunker) DiscardUpToGuaranteedChunk(peeker Peeker) error {
+	panic("This Content-Defined Chunking function does not support discarding up to a guaranteed chunk")
 }
