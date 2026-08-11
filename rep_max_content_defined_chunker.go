@@ -89,77 +89,75 @@ func (c *repMaxContentDefinedChunker) DiscardUpToGuaranteedChunk(peeker Peeker) 
 	bestHashCurrent := ^uint64(0)
 	bestHashNext := ^uint64(0)
 	bytesUntilNextRegion := gearHashWindowSizeBytes - 1
+
+	// The current offset can only be a valid cutting point if there
+	// are at least minSizeBytes after it. However, we only need to
+	// compare the candidate's rolling hash value against the
+	// minSizeBytes-1 points after it. We therefore peek
+	// minSizeBytes, but only process minSizeBytes-1.
 CheckPointsAfterCandidate:
-	for {
-		// The current offset can only be a valid cutting point
-		// if there are at least minSizeBytes after it. However,
-		// we only need to compare the candidate's rolling hash
-		// value against the minSizeBytes-1 points after it. We
-		// therefore peek minSizeBytes, but only process
-		// minSizeBytes-1.
-		d, err := peeker.Peek(c.minSizeBytes)
-		if err != nil && err != io.EOF {
+	d, err := peeker.Peek(c.minSizeBytes)
+	if err != nil && err != io.EOF {
+		return err
+	}
+	if len(d) < c.minSizeBytes {
+		return io.EOF
+	}
+	hashRegion := d[:c.minSizeBytes-1]
+
+	// See if there are any points within the trailing part of the
+	// current region having a higher rolling hash value.
+	for i, b := range hashRegion[:bytesUntilNextRegion] {
+		hash = (hash << 1) + gear[b]
+		if bestHashNext < hash {
+			bestHashNext = hash
+			if bestHashCurrent < bestHashNext {
+				// Found a better candidate. Restart.
+				if _, err := peeker.Discard(i + 1); err != nil {
+					return err
+				}
+				bytesUntilNextRegion -= i + 1
+				goto CheckPointsAfterCandidate
+			}
+		}
+	}
+
+	// End of current region. Transition to the next region and
+	// process the first byte.
+	hash = (hash << 1) + gear[hashRegion[bytesUntilNextRegion]]
+	bestHashPrevious := bestHashCurrent
+	bestHashCurrent, bestHashNext = bestHashNext, hash
+	if bestHashPrevious >= bestHashCurrent || bestHashCurrent < bestHashNext {
+		// First byte of the next region is a better candidate,
+		// or the current candidate isn't eligible anyway.
+		// Restart.
+		if _, err := peeker.Discard(bytesUntilNextRegion + 1); err != nil {
 			return err
 		}
-		if len(d) < c.minSizeBytes {
-			return io.EOF
-		}
-		hashRegion := d[:c.minSizeBytes-1]
-
-		// See if there are any points within the trailing part of
-		// the current region having a higher rolling hash value.
-		for i, b := range hashRegion[:bytesUntilNextRegion] {
-			hash = (hash << 1) + gear[b]
-			if bestHashNext < hash {
-				bestHashNext = hash
-				if bestHashCurrent < bestHashNext {
-					// Found a better candidate. Restart.
-					if _, err := peeker.Discard(i + 1); err != nil {
-						return err
-					}
-					bytesUntilNextRegion -= i + 1
-					continue CheckPointsAfterCandidate
-				}
-			}
-		}
-
-		// End of current region. Transition to the next region
-		// and process the first byte.
-		hash = (hash << 1) + gear[hashRegion[bytesUntilNextRegion]]
-		bestHashPrevious := bestHashCurrent
-		bestHashCurrent, bestHashNext = bestHashNext, hash
-		if bestHashPrevious >= bestHashCurrent || bestHashCurrent < bestHashNext {
-			// First byte of the next region is a better
-			// candidate, or the current candidate isn't
-			// eligible anyway. Restart.
-			if _, err := peeker.Discard(bytesUntilNextRegion + 1); err != nil {
-				return err
-			}
-			bytesUntilNextRegion = c.minSizeBytes - 2
-			continue CheckPointsAfterCandidate
-		}
-
-		// See if there are any points within the leading part of
-		// the next region having a higher rolling hash value.
-		for i, b := range hashRegion[bytesUntilNextRegion+1:] {
-			hash = (hash << 1) + gear[b]
-			if bestHashNext < hash {
-				bestHashNext = hash
-				if bestHashCurrent < bestHashNext {
-					// Found a better candidate. Restart.
-					if _, err := peeker.Discard(bytesUntilNextRegion + i + 2); err != nil {
-						return err
-					}
-					bytesUntilNextRegion = c.minSizeBytes - i - 3
-					continue CheckPointsAfterCandidate
-				}
-			}
-		}
-
-		// Current candidate is eligible, and the minSizeBytes-1
-		// after it don't have a higher rolling hash value.
-		return nil
+		bytesUntilNextRegion = c.minSizeBytes - 2
+		goto CheckPointsAfterCandidate
 	}
+
+	// See if there are any points within the leading part of the
+	// next region having a higher rolling hash value.
+	for i, b := range hashRegion[bytesUntilNextRegion+1:] {
+		hash = (hash << 1) + gear[b]
+		if bestHashNext < hash {
+			bestHashNext = hash
+			if bestHashCurrent < bestHashNext {
+				// Found a better candidate. Restart.
+				if _, err := peeker.Discard(bytesUntilNextRegion + i + 2); err != nil {
+					return err
+				}
+				bytesUntilNextRegion = c.minSizeBytes - i - 3
+				goto CheckPointsAfterCandidate
+			}
+		}
+	}
+
+	// Current candidate is eligible, and the minSizeBytes-1 after
+	// it don't have a higher rolling hash value.
+	return nil
 }
 
 func (c *repMaxContentDefinedChunker) GetMaximumPeekSizeBytes() int {
