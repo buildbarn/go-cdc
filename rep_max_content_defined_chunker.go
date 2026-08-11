@@ -66,23 +66,6 @@ func (c *repMaxContentDefinedChunker) DiscardUpToGuaranteedChunk(peeker Peeker) 
 		panic("Horizon size is too small to permit discarding up to a guaranteed chunk")
 	}
 
-	// Compute the rolling hash at the current point in the stream.
-	d, err := peeker.Peek(gearHashWindowSizeBytes)
-	if err != nil && err != io.EOF {
-		return err
-	}
-	if len(d) < gearHashWindowSizeBytes {
-		return io.EOF
-	}
-	gear := &c.gearTable.values
-	var hash uint64
-	for _, b := range d[:gearHashWindowSizeBytes] {
-		hash = (hash << 1) + gear[b]
-	}
-	if _, err := peeker.Discard(gearHashWindowSizeBytes); err != nil {
-		return err
-	}
-
 	// We need to keep continuous track of whether the current
 	// candidate point has minSizeBytes-1 points before it at which
 	// the rolling hash value is lower than the candidate's value.
@@ -96,9 +79,16 @@ func (c *repMaxContentDefinedChunker) DiscardUpToGuaranteedChunk(peeker Peeker) 
 	// [minSizeBytes-1, 2*(minSizeBytes-1)) points before it with a
 	// lower hash value. This makes this algorithm more picky than
 	// necessary, but that's all right.
+	//
+	// The initial values of bestHashNext and bytesUntilNextRegion
+	// are intentionally chosen so that the final byte of the
+	// initial rolling hash window denotes the start of a new
+	// region.
+	gear := &c.gearTable.values
+	var hash uint64
 	bestHashCurrent := ^uint64(0)
-	bestHashNext := hash
-	bytesUntilNextRegion := c.minSizeBytes - 2
+	bestHashNext := ^uint64(0)
+	bytesUntilNextRegion := gearHashWindowSizeBytes - 1
 CheckPointsAfterCandidate:
 	for {
 		// The current offset can only be a valid cutting point
