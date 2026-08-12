@@ -103,11 +103,10 @@ CheckPointsAfterCandidate:
 	if len(d) < c.minSizeBytes {
 		return io.EOF
 	}
-	hashRegion := d[:c.minSizeBytes-1]
 
 	// See if there are any points within the trailing part of the
 	// current region having a higher rolling hash value.
-	for i, b := range hashRegion[:bytesUntilNextRegion] {
+	for i, b := range d[:bytesUntilNextRegion] {
 		hash = (hash << 1) + gear[b]
 		if bestHashNext < hash {
 			bestHashNext = hash
@@ -124,7 +123,7 @@ CheckPointsAfterCandidate:
 
 	// End of current region. Transition to the next region and
 	// process the first byte.
-	hash = (hash << 1) + gear[hashRegion[bytesUntilNextRegion]]
+	hash = (hash << 1) + gear[d[bytesUntilNextRegion]]
 	bestHashPrevious := bestHashCurrent
 	bestHashCurrent, bestHashNext = bestHashNext, hash
 	if bestHashPrevious >= bestHashCurrent || bestHashCurrent < bestHashNext {
@@ -140,7 +139,7 @@ CheckPointsAfterCandidate:
 
 	// See if there are any points within the leading part of the
 	// next region having a higher rolling hash value.
-	for i, b := range hashRegion[bytesUntilNextRegion+1:] {
+	for i, b := range d[bytesUntilNextRegion+1 : c.minSizeBytes-1] {
 		hash = (hash << 1) + gear[b]
 		if bestHashNext < hash {
 			bestHashNext = hash
