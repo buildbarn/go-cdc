@@ -13,14 +13,14 @@ RepMaxCDC provides:
 - **Tight chunk size bounds:** Most CDC functions generate chunks
   whose minimum and maximum size are still a factor of 16 or 32 apart.
   RepMaxCDC is capable of generating chunks with sizes in range
-  $[n, 2n-1)$, while offering excellent deduplication rates.
+  $[n, 2n)$, while offering excellent deduplication rates.
 
 - **Excellent parallelism:** RepMaxCDC allows performing targeted
   searches for cutting points. This makes it possible to partition a
   large file into roughly equally sized pieces. These can be chunked in
   parallel.
 
-- **Size-based checking:** With chunks always falling in range $[n, 2n-1)$,
+- **Size-based checking:** With chunks always falling in range $[n, 2n)$,
   it is trivial to check whether a file can be split into multiple
   chunks, purely looking at its size. This property, which other CDC
   functions often lack, was needed to add support for chunking to
