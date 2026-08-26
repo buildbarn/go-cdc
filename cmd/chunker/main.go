@@ -26,7 +26,6 @@ func main() {
 	// c := cdc.NewFastContentDefinedChunker(&cdc.FastContentDefinedChunkerGearTable, 16*1024*1024))
 	r := c.NewChunkReader(bufio.NewReaderSize(f, 16*1024*1024))
 
-	chunkCount := 0
 	for {
 		chunk, err := r.ReadNextChunk()
 		if err != nil {
@@ -35,7 +34,6 @@ func main() {
 			}
 			log.Fatal(err)
 		}
-		chunkCount++
 		h := sha256.Sum256(chunk)
 		fmt.Printf("%s,%d\n", hex.EncodeToString(h[:]), len(chunk))
 	}
