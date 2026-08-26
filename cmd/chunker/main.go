@@ -37,7 +37,6 @@ func main() {
 		}
 		chunkCount++
 		h := sha256.Sum256(chunk)
-		fmt.Printf("%s-%d\n", hex.EncodeToString(h[:]), len(chunk))
+		fmt.Printf("%s,%d\n", hex.EncodeToString(h[:]), len(chunk))
 	}
-	log.Printf("Created %d chunks", chunkCount)
 }
