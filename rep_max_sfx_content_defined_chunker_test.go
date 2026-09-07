@@ -173,6 +173,7 @@ func TestRepMaxSfxContentDefinedChunkerNewChunkReader(t *testing.T) {
 		for horizonSizeBytes := 0; horizonSizeBytes <= 16*1024; horizonSizeBytes += 2 * 1024 {
 			t.Run(fmt.Sprintf("Horizon=%d", horizonSizeBytes), func(t *testing.T) {
 				chunker1 := cdc.NewSimpleRepMaxSfxContentDefinedChunker(
+					&cdc.NoSubstitutionBox,
 					/* minSizeBytes = */ 2*1024,
 					horizonSizeBytes,
 				)
@@ -213,17 +214,23 @@ func TestRepMaxSfxContentDefinedChunkerNewChunkReader(t *testing.T) {
 }
 
 func FuzzRepMaxSfxContentDefinedChunker(f *testing.F) {
-	f.Fuzz(func(t *testing.T, minSizeBytes, horizonSizeBytes int, data []byte) {
+	f.Fuzz(func(t *testing.T, substitutionBoxSeed []byte, minSizeBytes, horizonSizeBytes int, data []byte) {
 		if minSizeBytes <= 1 || horizonSizeBytes < 0 {
 			return
 		}
 
+		substitutionBox := &cdc.NoSubstitutionBox
+		if len(substitutionBoxSeed) > 0 {
+			substitutionBox = cdc.NewSeededSubstitutionBox(substitutionBoxSeed)
+		}
+
 		chunker1 := cdc.NewSimpleRepMaxSfxContentDefinedChunker(
+			substitutionBox,
 			minSizeBytes,
 			horizonSizeBytes,
 		)
 		chunker2 := cdc.NewRepMaxSfxContentDefinedChunker(
-			&cdc.NoSubstitutionBox,
+			substitutionBox,
 			minSizeBytes,
 			horizonSizeBytes,
 		)

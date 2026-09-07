@@ -1,15 +1,26 @@
 package cdc
 
 import (
-	"bytes"
 	"io"
 )
 
 type simpleRepMaxSfxContentDefinedChunker struct {
 	nonSynchronizableContentDefinedChunker
 
-	minSizeBytes  int
-	peekSizeBytes int
+	substitutionBox *SubstitutionBox
+	minSizeBytes    int
+	peekSizeBytes   int
+}
+
+func (c *simpleRepMaxSfxContentDefinedChunker) compareBytes(a, b []byte) int {
+	for i := 0; i < len(a); i++ {
+		if ca, cb := c.substitutionBox[a[i]], c.substitutionBox[b[i]]; ca < cb {
+			return -1
+		} else if ca > cb {
+			return 1
+		}
+	}
+	return 0
 }
 
 // NewSimpleRepMaxSfxContentDefinedChunker returns a content defined
@@ -17,10 +28,11 @@ type simpleRepMaxSfxContentDefinedChunker struct {
 // NewRepMaxSfxContentDefinedChunker. However, this implementation is
 // simpler and less efficient. It is merely provided for testing
 // purposes.
-func NewSimpleRepMaxSfxContentDefinedChunker(minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
+func NewSimpleRepMaxSfxContentDefinedChunker(substitutionBox *SubstitutionBox, minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
 	return &simpleRepMaxSfxContentDefinedChunker{
-		minSizeBytes:  minSizeBytes,
-		peekSizeBytes: 2*minSizeBytes + horizonSizeBytes,
+		substitutionBox: substitutionBox,
+		minSizeBytes:    minSizeBytes,
+		peekSizeBytes:   2*minSizeBytes + horizonSizeBytes,
 	}
 }
 
@@ -73,7 +85,7 @@ func (r *simpleRepMaxSfxChunkReader) ReadNextChunk() ([]byte, error) {
 	for {
 		bestChunkSizeBytes := c.minSizeBytes
 		for i := c.minSizeBytes + 1; i <= len(d)-c.minSizeBytes; i++ {
-			if bytes.Compare(d[bestChunkSizeBytes:][:c.minSizeBytes], d[i:][:c.minSizeBytes]) < 0 {
+			if c.compareBytes(d[bestChunkSizeBytes:][:c.minSizeBytes], d[i:][:c.minSizeBytes]) < 0 {
 				bestChunkSizeBytes = i
 			}
 		}
