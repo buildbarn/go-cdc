@@ -4,7 +4,7 @@ import (
 	"crypto/sha3"
 )
 
-// SubstitutionBox is used by RepMaxSfxCDC to remap the values of input
+// SubstitutionBox is used by RepLexMaxCDC to remap the values of input
 // bytes prior to comparing them. This is intended to break linearity
 // that exists in input data, which would lead to suboptimal chunking
 // and excessive resource usage.
@@ -15,7 +15,7 @@ import (
 type SubstitutionBox [256]byte
 
 // NoSubstitutionBox is a SubstitutionBox that acts as the identity
-// function. This causes RepMaxSfxCDC to cut before points having the
+// function. This causes RepLexMaxCDC to cut before points having the
 // highest byte value. This instance is only provided for testing and
 // fuzzing, and should not be used in practice.
 var NoSubstitutionBox = SubstitutionBox{
@@ -54,7 +54,7 @@ var NoSubstitutionBox = SubstitutionBox{
 }
 
 // NewSeededSubstitutionBox creates a SubstitutionBox for use by
-// RepMaxSfxCDC that is initialized with values that are based on a
+// RepLexMaxCDC that is initialized with values that are based on a
 // seed.
 //
 // The seed is hashed using cSHAKE128. The resulting XOF is used to

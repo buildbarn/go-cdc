@@ -6,12 +6,12 @@ import (
 	"slices"
 )
 
-// repMaxSfxIncompleteChunks represents a sequence of potential cutting
+// repLexMaxIncompleteChunks represents a sequence of potential cutting
 // points that are equidistant.
 //
 // In the case of RepMaxCDC, potential cutting points tend to be
 // randomly distributed, only occurring with a relatively low
-// probability. However, in the case of RepMaxSfxCDC it is easily
+// probability. However, in the case of RepLexMaxCDC it is easily
 // possible to create long runs of closely spaced potential cutting
 // points.
 //
@@ -19,12 +19,12 @@ import (
 // "c" is a potential cutting point, with the most preferable one being
 // (the ones closest to) "c". For such a sequence, the `last` field will
 // contain the offset of "c", and `period` will be set to 2.
-type repMaxSfxIncompleteChunks struct {
+type repLexMaxIncompleteChunks struct {
 	last   int
 	period int
 }
 
-type repMaxSfxContentDefinedChunker struct {
+type repLexMaxContentDefinedChunker struct {
 	// TODO: Add support for synchronizing.
 	nonSynchronizableContentDefinedChunker
 
@@ -33,7 +33,7 @@ type repMaxSfxContentDefinedChunker struct {
 	peekSizeBytes   int
 }
 
-// NewRepMaxSfxContentDefinedChunker returns a content defined chunker
+// NewRepLexMaxContentDefinedChunker returns a content defined chunker
 // that, like RepMaxCDC, repeatedly applies the chunking process until
 // chunks are [minSizeBytes, 2*minSizeBytes) in size.
 //
@@ -49,31 +49,31 @@ type repMaxSfxContentDefinedChunker struct {
 // each record may be treated as a potential cutting point, leading to
 // excessive memory usage and poor chunking behavior. To address this,
 // data is first passed through an S-box (substitution box).
-func NewRepMaxSfxContentDefinedChunker(substitutionBox *SubstitutionBox, minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
-	return &repMaxSfxContentDefinedChunker{
+func NewRepLexMaxContentDefinedChunker(substitutionBox *SubstitutionBox, minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
+	return &repLexMaxContentDefinedChunker{
 		substitutionBox: substitutionBox,
 		minSizeBytes:    minSizeBytes,
 		peekSizeBytes:   2*minSizeBytes + horizonSizeBytes,
 	}
 }
 
-func (c *repMaxSfxContentDefinedChunker) NewChunkReader(peeker Peeker) ChunkReader {
-	return &repMaxSfxChunkReader{
+func (c *repLexMaxContentDefinedChunker) NewChunkReader(peeker Peeker) ChunkReader {
+	return &repLexMaxChunkReader{
 		contentDefinedChunker: c,
 		peeker:                peeker,
 		completeChunks:        make([]int, 0, c.peekSizeBytes/c.minSizeBytes),
-		oldChunks:             make([]repMaxSfxIncompleteChunks, 0, 64),
-		firstBestChunks:       repMaxSfxIncompleteChunks{},
+		oldChunks:             make([]repLexMaxIncompleteChunks, 0, 64),
+		firstBestChunks:       repLexMaxIncompleteChunks{},
 		currentChunk:          1,
 	}
 }
 
-func (c *repMaxSfxContentDefinedChunker) GetMaximumPeekSizeBytes() int {
+func (c *repLexMaxContentDefinedChunker) GetMaximumPeekSizeBytes() int {
 	return c.peekSizeBytes
 }
 
-type repMaxSfxChunkReader struct {
-	contentDefinedChunker *repMaxSfxContentDefinedChunker
+type repLexMaxChunkReader struct {
+	contentDefinedChunker *repLexMaxContentDefinedChunker
 	peeker                Peeker
 
 	// The size of the previous chunk returned by ReadNextChunk().
@@ -95,8 +95,8 @@ type repMaxSfxChunkReader struct {
 	// position at which they may be placed (i.e., the end of the
 	// last complete chunk, plus the minimum chunk size). This means
 	// that the first entry is always equal to zero.
-	oldChunks       []repMaxSfxIncompleteChunks
-	firstBestChunks repMaxSfxIncompleteChunks
+	oldChunks       []repLexMaxIncompleteChunks
+	firstBestChunks repLexMaxIncompleteChunks
 
 	// Last occurrence of the data associated with the best
 	// potential cutting point. If the same data occurs at two
@@ -114,7 +114,7 @@ type repMaxSfxChunkReader struct {
 	matchLength int
 }
 
-func (r *repMaxSfxChunkReader) ReadNextChunk() ([]byte, error) {
+func (r *repLexMaxChunkReader) ReadNextChunk() ([]byte, error) {
 	// Discard data that was handed out by the previous call.
 	discardedSizeBytes, err := r.peeker.Discard(r.previousChunkSizeBytes)
 	r.previousChunkSizeBytes -= discardedSizeBytes
@@ -276,7 +276,7 @@ MatchSlow:
 				firstBestChunks.last = currentChunk
 			} else {
 				oldChunks = append(oldChunks, firstBestChunks)
-				firstBestChunks = repMaxSfxIncompleteChunks{
+				firstBestChunks = repLexMaxIncompleteChunks{
 					last:   currentChunk,
 					period: distance,
 				}
@@ -312,7 +312,7 @@ MatchSlow:
 						firstBestChunks.last = lastBestChunk
 					} else {
 						oldChunks = append(oldChunks, firstBestChunks)
-						firstBestChunks = repMaxSfxIncompleteChunks{
+						firstBestChunks = repLexMaxIncompleteChunks{
 							last:   lastBestChunk,
 							period: period,
 						}
@@ -385,7 +385,7 @@ MatchSlow:
 		// Reinitialize, so that we compute chunks following the
 		// ones that were completed.
 		oldChunks = oldChunks[:0]
-		firstBestChunks = repMaxSfxIncompleteChunks{}
+		firstBestChunks = repLexMaxIncompleteChunks{}
 		lastBestChunk = 0
 		currentChunk = 1
 		matchLength = 0
@@ -445,7 +445,7 @@ MatchSlow:
 		// rarely.
 		firstChunk = minSizeBytes + firstBestChunks.last
 		oldChunks = oldChunks[:0]
-		firstBestChunks = repMaxSfxIncompleteChunks{}
+		firstBestChunks = repLexMaxIncompleteChunks{}
 		lastBestChunk = 0
 		currentChunk = 1
 		matchLength = 0

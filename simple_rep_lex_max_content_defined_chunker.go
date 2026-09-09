@@ -4,7 +4,7 @@ import (
 	"io"
 )
 
-type simpleRepMaxSfxContentDefinedChunker struct {
+type simpleRepLexMaxContentDefinedChunker struct {
 	nonSynchronizableContentDefinedChunker
 
 	substitutionBox *SubstitutionBox
@@ -12,7 +12,7 @@ type simpleRepMaxSfxContentDefinedChunker struct {
 	peekSizeBytes   int
 }
 
-func (c *simpleRepMaxSfxContentDefinedChunker) compareBytes(a, b []byte) int {
+func (c *simpleRepLexMaxContentDefinedChunker) compareBytes(a, b []byte) int {
 	for i := 0; i < len(a); i++ {
 		if ca, cb := c.substitutionBox[a[i]], c.substitutionBox[b[i]]; ca < cb {
 			return -1
@@ -23,38 +23,38 @@ func (c *simpleRepMaxSfxContentDefinedChunker) compareBytes(a, b []byte) int {
 	return 0
 }
 
-// NewSimpleRepMaxSfxContentDefinedChunker returns a content defined
+// NewSimpleRepLexMaxContentDefinedChunker returns a content defined
 // chunker that provides the same behavior as the one returned by
-// NewRepMaxSfxContentDefinedChunker. However, this implementation is
+// NewRepLexMaxContentDefinedChunker. However, this implementation is
 // simpler and less efficient. It is merely provided for testing
 // purposes.
-func NewSimpleRepMaxSfxContentDefinedChunker(substitutionBox *SubstitutionBox, minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
-	return &simpleRepMaxSfxContentDefinedChunker{
+func NewSimpleRepLexMaxContentDefinedChunker(substitutionBox *SubstitutionBox, minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
+	return &simpleRepLexMaxContentDefinedChunker{
 		substitutionBox: substitutionBox,
 		minSizeBytes:    minSizeBytes,
 		peekSizeBytes:   2*minSizeBytes + horizonSizeBytes,
 	}
 }
 
-func (c *simpleRepMaxSfxContentDefinedChunker) NewChunkReader(peeker Peeker) ChunkReader {
-	return &simpleRepMaxSfxChunkReader{
+func (c *simpleRepLexMaxContentDefinedChunker) NewChunkReader(peeker Peeker) ChunkReader {
+	return &simpleRepLexMaxChunkReader{
 		contentDefinedChunker: c,
 		peeker:                peeker,
 	}
 }
 
-func (c *simpleRepMaxSfxContentDefinedChunker) GetMaximumPeekSizeBytes() int {
+func (c *simpleRepLexMaxContentDefinedChunker) GetMaximumPeekSizeBytes() int {
 	return c.peekSizeBytes
 }
 
-type simpleRepMaxSfxChunkReader struct {
-	contentDefinedChunker *simpleRepMaxSfxContentDefinedChunker
+type simpleRepLexMaxChunkReader struct {
+	contentDefinedChunker *simpleRepLexMaxContentDefinedChunker
 	peeker                Peeker
 
 	previousChunkSizeBytes int
 }
 
-func (r *simpleRepMaxSfxChunkReader) ReadNextChunk() ([]byte, error) {
+func (r *simpleRepLexMaxChunkReader) ReadNextChunk() ([]byte, error) {
 	// Discard data that was handed out by the previous call.
 	discardedSizeBytes, err := r.peeker.Discard(r.previousChunkSizeBytes)
 	r.previousChunkSizeBytes -= discardedSizeBytes
