@@ -282,51 +282,26 @@ MatchSlow:
 				}
 			}
 
+			// If the best potential cutting point is
+			// followed by repeated data, we we may register
+			// multiple potential cutting points at once.
 			if period := currentChunk - lastBestChunk; matchLength >= period {
-				// The best potential cutting point is
-				// followed by repeated data. This means
-				// that we must register multiple
-				// potential cutting points.
-				oldMatchLength := matchLength
-				matchLength %= period
-				currentChunk += oldMatchLength - matchLength
-				if matchLength == 0 {
-					// "bbaabbaabbaac". The new best
-					// potential cutting point is at "c".
-					// The next byte to compare against
-					// process should be the one after
-					// "c".
-					lastBestChunk = currentChunk
-					currentChunk++
+				lastBestChunk = currentChunk + matchLength/period*period
+				if firstBestChunks.period == period {
+					firstBestChunks.last = lastBestChunk
 				} else {
-					// "bbaabbaabbaabbc". Even though "c"
-					// is the new best potential cutting
-					// point, we must also create
-					// potential cutting points for "bbc"
-					// and "bc". This is why we pick
-					// "bbc" for now.
-					lastBestChunk = currentChunk - period
-				}
-				if firstBestChunks.last != lastBestChunk {
-					if firstBestChunks.period == period {
-						firstBestChunks.last = lastBestChunk
-					} else {
-						oldChunks = append(oldChunks, firstBestChunks)
-						firstBestChunks = repLexMaxIncompleteChunks{
-							last:   lastBestChunk,
-							period: period,
-						}
+					oldChunks = append(oldChunks, firstBestChunks)
+					firstBestChunks = repLexMaxIncompleteChunks{
+						last:   lastBestChunk,
+						period: period,
 					}
-				}
-				if matchLength == 0 {
-					goto MatchFirstBytes
 				}
 			} else {
 				lastBestChunk = currentChunk
-				currentChunk++
-				matchLength = 0
-				goto MatchFirstBytes
 			}
+			currentChunk = lastBestChunk + 1
+			matchLength = 0
+			goto MatchFirstBytes
 		} else {
 			// Best candidate and current candidate share the
 			// same prefix. Continue matching the next byte.
