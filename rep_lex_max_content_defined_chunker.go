@@ -320,11 +320,11 @@ MatchSlow:
 				// current candidate should still be respected
 				// to make computation of the period work.
 				period := currentChunk - lastBestChunk
+				lastBestChunk = currentChunk
 				currentChunk += period
 				if currentChunk >= firstBestChunks.last+minSizeBytes {
 					goto CompleteChunks
 				}
-				lastBestChunk += period
 				matchLength -= period
 			}
 		}
