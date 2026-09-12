@@ -140,6 +140,12 @@ func TestRepLexMaxContentDefinedChunkerNewChunkReader(t *testing.T) {
 				data:             "0000000000000000000000000000100100100010010010001001001001001010000000000000000",
 				cuts:             []int{51, 28},
 			},
+			{
+				minSizeBytes:     81,
+				horizonSizeBytes: 67,
+				data:             "0000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+				cuts:             []int{81, 88},
+			},
 		} {
 			t.Run(fmt.Sprintf("%d/%d/%s", testCase.minSizeBytes, testCase.horizonSizeBytes, testCase.data), func(t *testing.T) {
 				chunker := cdc.NewRepLexMaxContentDefinedChunker(

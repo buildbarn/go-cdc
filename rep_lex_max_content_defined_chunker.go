@@ -176,7 +176,8 @@ func (r *repLexMaxChunkReader) ReadNextChunk() ([]byte, error) {
 	// In that case we may do some loop unrolling to compare eight
 	// bytes at once, similar to what we do for plain RepMaxCDC.
 MatchFirstBytes:
-	if easyRegion := uncompletedRegion[currentChunk:min(len(uncompletedRegion), firstBestChunks.last+minSizeBytes)]; len(easyRegion) >= 7+8 {
+	const bytesPerRound = 8
+	if easyRegion := uncompletedRegion[currentChunk:min(len(uncompletedRegion), firstBestChunks.last+minSizeBytes+bytesPerRound-2)]; len(easyRegion) >= 2*bytesPerRound-1 {
 		bestFirstBytes := uint64(sbox[uncompletedRegion[lastBestChunk]])<<56 |
 			uint64(sbox[uncompletedRegion[lastBestChunk+1]])<<48 |
 			uint64(sbox[uncompletedRegion[lastBestChunk+2]])<<40 |
@@ -192,9 +193,9 @@ MatchFirstBytes:
 			uint64(sbox[easyRegion[4]])<<16 |
 			uint64(sbox[easyRegion[5]])<<8 |
 			uint64(sbox[easyRegion[6]])
-		i := 7
-		for ; i+8 <= len(easyRegion); i += 8 {
-			b := [8]byte(easyRegion[i : i+8])
+		i := bytesPerRound - 1
+		for ; i+bytesPerRound <= len(easyRegion); i += bytesPerRound {
+			b := [bytesPerRound]byte(easyRegion[i : i+bytesPerRound])
 			newFirstBytes := uint64(sbox[b[0]])
 			mergedFirstBytes := (currentFirstBytes << 8) | newFirstBytes
 			if mergedFirstBytes >= bestFirstBytes {
@@ -253,7 +254,7 @@ MatchFirstBytes:
 			}
 			currentFirstBytes = mergedFirstBytes
 		}
-		currentChunk += i - 7
+		currentChunk += i + 1 - bytesPerRound
 		goto MatchSlow
 	}
 
