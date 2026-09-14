@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRepLexMaxContentDefinedChunkerNewChunkReader(t *testing.T) {
+func TestRepLexContentDefinedChunkerNewChunkReader(t *testing.T) {
 	t.Run("Static", func(t *testing.T) {
 		for _, testCase := range []struct {
 			minSizeBytes     int
@@ -148,7 +148,7 @@ func TestRepLexMaxContentDefinedChunkerNewChunkReader(t *testing.T) {
 			},
 		} {
 			t.Run(fmt.Sprintf("%d/%d/%s", testCase.minSizeBytes, testCase.horizonSizeBytes, testCase.data), func(t *testing.T) {
-				chunker := cdc.NewRepLexMaxContentDefinedChunker(
+				chunker := cdc.NewRepLexContentDefinedChunker(
 					&cdc.NoSubstitutionBox,
 					testCase.minSizeBytes,
 					testCase.horizonSizeBytes,
@@ -170,20 +170,20 @@ func TestRepLexMaxContentDefinedChunkerNewChunkReader(t *testing.T) {
 	})
 
 	t.Run("Random", func(t *testing.T) {
-		// Test that RepLexMaxContentDefinedChunker behaves the
-		// same way as SimpleRepLexMaxContentDefinedChunker.
+		// Test that RepLexContentDefinedChunker behaves the
+		// same way as SimpleRepLexContentDefinedChunker.
 		seed := rand.Int63()
 		r1 := rand.New(rand.NewSource(seed))
 		r2 := rand.New(rand.NewSource(seed))
 
 		for horizonSizeBytes := 0; horizonSizeBytes <= 16*1024; horizonSizeBytes += 2 * 1024 {
 			t.Run(fmt.Sprintf("Horizon=%d", horizonSizeBytes), func(t *testing.T) {
-				chunker1 := cdc.NewSimpleRepLexMaxContentDefinedChunker(
+				chunker1 := cdc.NewSimpleRepLexContentDefinedChunker(
 					&cdc.NoSubstitutionBox,
 					/* minSizeBytes = */ 2*1024,
 					horizonSizeBytes,
 				)
-				chunker2 := cdc.NewRepLexMaxContentDefinedChunker(
+				chunker2 := cdc.NewRepLexContentDefinedChunker(
 					&cdc.NoSubstitutionBox,
 					/* minSizeBytes = */ 2*1024,
 					horizonSizeBytes,
@@ -219,7 +219,7 @@ func TestRepLexMaxContentDefinedChunkerNewChunkReader(t *testing.T) {
 	})
 }
 
-func FuzzRepLexMaxContentDefinedChunker(f *testing.F) {
+func FuzzRepLexContentDefinedChunker(f *testing.F) {
 	f.Fuzz(func(t *testing.T, substitutionBoxSeed []byte, minSizeBytes, horizonSizeBytes int, data []byte) {
 		if minSizeBytes <= 1 || horizonSizeBytes < 0 {
 			return
@@ -230,12 +230,12 @@ func FuzzRepLexMaxContentDefinedChunker(f *testing.F) {
 			substitutionBox = cdc.NewSeededSubstitutionBox(substitutionBoxSeed)
 		}
 
-		chunker1 := cdc.NewSimpleRepLexMaxContentDefinedChunker(
+		chunker1 := cdc.NewSimpleRepLexContentDefinedChunker(
 			substitutionBox,
 			minSizeBytes,
 			horizonSizeBytes,
 		)
-		chunker2 := cdc.NewRepLexMaxContentDefinedChunker(
+		chunker2 := cdc.NewRepLexContentDefinedChunker(
 			substitutionBox,
 			minSizeBytes,
 			horizonSizeBytes,
