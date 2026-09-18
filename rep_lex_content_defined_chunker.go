@@ -198,64 +198,102 @@ MatchFirstBytes:
 			newFirstBytes := uint64(sbox[b[0]])
 			mergedFirstBytes := (currentFirstBytes << 8) | newFirstBytes
 			if mergedFirstBytes >= bestFirstBytes {
-				currentChunk += i - 7
-				matchLength = bits.LeadingZeros64(mergedFirstBytes^bestFirstBytes) >> 3
-				goto MatchSlow
+				currentChunk -= 7
+				goto MaybeFoundBetter
 			}
 			newFirstBytes = (newFirstBytes << 8) | uint64(sbox[b[1]])
 			mergedFirstBytes = (currentFirstBytes << 16) | newFirstBytes
 			if mergedFirstBytes >= bestFirstBytes {
-				currentChunk += i - 6
-				matchLength = bits.LeadingZeros64(mergedFirstBytes^bestFirstBytes) >> 3
-				goto MatchSlow
+				currentChunk -= 6
+				goto MaybeFoundBetter
 			}
 			newFirstBytes = (newFirstBytes << 8) | uint64(sbox[b[2]])
 			mergedFirstBytes = (currentFirstBytes << 24) | newFirstBytes
 			if mergedFirstBytes >= bestFirstBytes {
-				currentChunk += i - 5
-				matchLength = bits.LeadingZeros64(mergedFirstBytes^bestFirstBytes) >> 3
-				goto MatchSlow
+				currentChunk -= 5
+				goto MaybeFoundBetter
 			}
 			newFirstBytes = (newFirstBytes << 8) | uint64(sbox[b[3]])
 			mergedFirstBytes = (currentFirstBytes << 32) | newFirstBytes
 			if mergedFirstBytes >= bestFirstBytes {
-				currentChunk += i - 4
-				matchLength = bits.LeadingZeros64(mergedFirstBytes^bestFirstBytes) >> 3
-				goto MatchSlow
+				currentChunk -= 4
+				goto MaybeFoundBetter
 			}
 			newFirstBytes = (newFirstBytes << 8) | uint64(sbox[b[4]])
 			mergedFirstBytes = (currentFirstBytes << 40) | newFirstBytes
 			if mergedFirstBytes >= bestFirstBytes {
-				currentChunk += i - 3
-				matchLength = bits.LeadingZeros64(mergedFirstBytes^bestFirstBytes) >> 3
-				goto MatchSlow
+				currentChunk -= 3
+				goto MaybeFoundBetter
 			}
 			newFirstBytes = (newFirstBytes << 8) | uint64(sbox[b[5]])
 			mergedFirstBytes = (currentFirstBytes << 48) | newFirstBytes
 			if mergedFirstBytes >= bestFirstBytes {
-				currentChunk += i - 2
-				matchLength = bits.LeadingZeros64(mergedFirstBytes^bestFirstBytes) >> 3
-				goto MatchSlow
+				currentChunk -= 2
+				goto MaybeFoundBetter
 			}
 			newFirstBytes = (newFirstBytes << 8) | uint64(sbox[b[6]])
 			mergedFirstBytes = (currentFirstBytes << 56) | newFirstBytes
 			if mergedFirstBytes >= bestFirstBytes {
-				currentChunk += i - 1
-				matchLength = bits.LeadingZeros64(mergedFirstBytes^bestFirstBytes) >> 3
-				goto MatchSlow
+				currentChunk -= 1
+				goto MaybeFoundBetter
 			}
 			newFirstBytes = (newFirstBytes << 8) | uint64(sbox[b[7]])
 			mergedFirstBytes = newFirstBytes
 			if mergedFirstBytes >= bestFirstBytes {
-				currentChunk += i
-				matchLength = bits.LeadingZeros64(mergedFirstBytes^bestFirstBytes) >> 3
-				goto MatchSlow
+				goto MaybeFoundBetter
 			}
 			currentFirstBytes = mergedFirstBytes
+			continue
+
+		MaybeFoundBetter:
+			currentChunk += i
+			if mergedFirstBytes == bestFirstBytes {
+				// First eight bytes match those at the
+				// best known offset. Continue byte-wise
+				// matching.
+				matchLength = bytesPerRound
+				goto MatchSlow
+			}
+			matchLength = bits.LeadingZeros64(mergedFirstBytes^bestFirstBytes) >> 3
+			goto FoundBetter
 		}
 		currentChunk += i + 1 - bytesPerRound
-		goto MatchSlow
 	}
+	goto MatchSlow
+
+	// Current candidate is better than what has already been
+	// observed. Store its offset.
+FoundBetter:
+	if distance := currentChunk - firstBestChunks.last; firstBestChunks.period == distance {
+		firstBestChunks.last = currentChunk
+	} else {
+		oldChunks = append(oldChunks, firstBestChunks)
+		firstBestChunks = repLexIncompleteChunks{
+			last:   currentChunk,
+			period: distance,
+		}
+	}
+
+	// If the best potential cutting point is followed by repeated
+	// data, we we may register multiple potential cutting points at
+	// once.
+	if period := currentChunk - lastBestChunk; matchLength >= period {
+		lastBestChunk = currentChunk + matchLength/period*period
+		if firstBestChunks.period == period {
+			firstBestChunks.last = lastBestChunk
+		} else {
+			oldChunks = append(oldChunks, firstBestChunks)
+			firstBestChunks = repLexIncompleteChunks{
+				last:   lastBestChunk,
+				period: period,
+			}
+		}
+	} else {
+		lastBestChunk = currentChunk
+	}
+	currentChunk = lastBestChunk + 1
+	matchLength = 0
+	goto MatchFirstBytes
 
 MatchSlow:
 	for currentChunk+matchLength < len(uncompletedRegion) {
@@ -270,38 +308,7 @@ MatchSlow:
 			matchLength = 0
 			goto MatchFirstBytes
 		} else if ca < cb {
-			// Current candidate is better than what has
-			// already been observed. Store its offset.
-			if distance := currentChunk - firstBestChunks.last; firstBestChunks.period == distance {
-				firstBestChunks.last = currentChunk
-			} else {
-				oldChunks = append(oldChunks, firstBestChunks)
-				firstBestChunks = repLexIncompleteChunks{
-					last:   currentChunk,
-					period: distance,
-				}
-			}
-
-			// If the best potential cutting point is
-			// followed by repeated data, we we may register
-			// multiple potential cutting points at once.
-			if period := currentChunk - lastBestChunk; matchLength >= period {
-				lastBestChunk = currentChunk + matchLength/period*period
-				if firstBestChunks.period == period {
-					firstBestChunks.last = lastBestChunk
-				} else {
-					oldChunks = append(oldChunks, firstBestChunks)
-					firstBestChunks = repLexIncompleteChunks{
-						last:   lastBestChunk,
-						period: period,
-					}
-				}
-			} else {
-				lastBestChunk = currentChunk
-			}
-			currentChunk = lastBestChunk + 1
-			matchLength = 0
-			goto MatchFirstBytes
+			goto FoundBetter
 		} else {
 			// Best candidate and current candidate share the
 			// same prefix. Continue matching the next byte.
