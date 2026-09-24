@@ -84,7 +84,7 @@ func (r *simpleRepLexChunkReader) ReadNextChunk() ([]byte, error) {
 	// at which we should cut.
 	for {
 		bestChunkSizeBytes := c.minSizeBytes
-		for i := c.minSizeBytes + 1; i <= len(d)-c.minSizeBytes; i++ {
+		for i := c.minSizeBytes + 1; i <= min(len(d)-c.minSizeBytes, bestChunkSizeBytes+c.minSizeBytes-1); i++ {
 			if c.compareBytes(d[bestChunkSizeBytes:][:c.minSizeBytes], d[i:][:c.minSizeBytes]) < 0 {
 				bestChunkSizeBytes = i
 			}

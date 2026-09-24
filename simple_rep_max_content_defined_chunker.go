@@ -85,6 +85,9 @@ func (r *simpleRepMaxChunkReader) ReadNextChunk() ([]byte, error) {
 		bestHash := hash
 		bestCutOffsetBytes := 0
 		for i, b := range d[c.minSizeBytes:] {
+			if i >= bestCutOffsetBytes+c.minSizeBytes {
+				break
+			}
 			hash = (hash << 1) + gear[b]
 			if bestHash < hash {
 				bestHash = hash
